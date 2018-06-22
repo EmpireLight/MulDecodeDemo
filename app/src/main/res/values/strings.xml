@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">MulDecodeDemo</string>
+
+    <string name="next_tel">下一步</string>
+
+    <string name="video_editor">视频编辑器</string>
+</resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="title">40dp</dimen>
+    <dimen name="padding">15dp</dimen>
+    <dimen name="title_size">16dp</dimen>
+
+    <dimen name="img_width">43dp</dimen>
+    <dimen name="img_height">58dp</dimen>
+    <dimen name="segmentation_height">107dp</dimen>
+    <dimen name="thumb_height">64dp</dimen>
+
+    <dimen name="jc_start_button_w_h_normal">45dp</dimen>
+    <dimen name="jc_start_button_w_h_fullscreen">62dp</dimen>
+
+    <dimen name="user_info_top">0dp</dimen>
+    <dimen name="icon_top">64dp</dimen>
+</resources>
