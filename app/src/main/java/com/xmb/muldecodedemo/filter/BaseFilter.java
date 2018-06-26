@@ -138,6 +138,10 @@ public abstract class BaseFilter {
         this.textureID = textureId;
     }
 
+    public void setTextureUnit(int textureUnit) {
+        this.textureUnit = textureUnit;
+    }
+
     public void onDisplaySizeChanged(final int width, final int height) {
 //        mOutputWidth = width;
 //        mOutputHeight = height;

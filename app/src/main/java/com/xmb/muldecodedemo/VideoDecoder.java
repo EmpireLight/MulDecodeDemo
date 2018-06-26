@@ -180,7 +180,7 @@ public class VideoDecoder {
                             //如果缓冲区里的可展示时间>当前视频播放的进度，就休眠一下
                             mVideoDecoder.releaseOutputBuffer(outputBufferIndex, true);
                             outputBufferIndex = mVideoDecoder.dequeueOutputBuffer(videoBufferInfo, TIMEOUT_US);
-                            Log.d(TAG, "videoDecode: " + count++);
+                            //Log.d(TAG, "videoDecode: " + count++);
                             break;
                         //将该ByteBuffer释放掉，以供缓冲区的循环使用。如果没有这一步的话，
                         //会导致上面返回的inputBufferIndex一直为-1，使数据读写操作无法进行下去。

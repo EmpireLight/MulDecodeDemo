@@ -40,7 +40,6 @@
 
     </RelativeLayout>
 
-
     <RelativeLayout
         android:id="@+id/img_layout"
         android:layout_width="match_parent"
