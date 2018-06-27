@@ -22,6 +22,11 @@ public class WaterMarkFilter extends ProcessFilter{
     /**图片宽高*/
     public int imgWitdh, imgHeight;
 
+    public WaterMarkFilter(Context context) {
+        super(context);
+        super.setTextureID(OpenGlUtils.loadNormalTextureID());
+    }
+
     public WaterMarkFilter(Context context, int TextureUnit) {
         super(context);
         super.setTextureUnit(TextureUnit);
@@ -31,6 +36,7 @@ public class WaterMarkFilter extends ProcessFilter{
     public void setWaterMark(Bitmap bitmap) {
         imgWitdh = bitmap.getWidth();
         imgHeight = bitmap.getHeight();
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + super.textureUnit);
         GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);//给纹理加载图片
         bitmap.recycle();
     }

@@ -8,21 +8,18 @@ include_directories(
                      src/main/cpp
                      src/main/cpp/include)
 
-#添加源代码
-add_library( decoder_demo
-             #rtmp-handle
+#创建动态库decoder，由decoder.cpp编译链接生成
+add_library( decoder
              SHARED
-             #src/main/cpp/rtmp_handle.cpp
-             src/main/cpp/decoder.cpp
-             src/main/cpp/decoder_demo.cpp)
+             src/main/cpp/decoder.cpp)
 
-#添加库 动态库为SHARED  静态库就是STATIC
-#add_library( rtmp
+#创建动态库decoder,直接引用libdecoder.so
+#add_library( decoder
 #             SHARED
 #             IMPORTED )
-#set_target_properties( rtmp
+#set_target_properties( decoder
 #                       PROPERTIES IMPORTED_LOCATION
-#                       ${CMAKE_SOURCE_DIR}/src/main/jniLibs/${ANDROID_ABI}/librtmp.so)
+#                       ${CMAKE_SOURCE_DIR}/src/main/jniLibs/${ANDROID_ABI}/libdecoder.so)
 
 add_library( avcodec-57
              SHARED
@@ -66,15 +63,11 @@ set_target_properties( swscale-4
                        PROPERTIES IMPORTED_LOCATION
                        ${CMAKE_SOURCE_DIR}/src/main/jniLibs/${ANDROID_ABI}/libswscale-4.so)
 
-target_link_libraries(
-                       decoder_demo
-                       #rtmp-handle
-
+target_link_libraries( decoder
                        avcodec-57
                        avfilter-6
                        avformat-57
                        avutil-55
                        swresample-2
                        swscale-4
-                       #rtmp
                        ${log-lib} )

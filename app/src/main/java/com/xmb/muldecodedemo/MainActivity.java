@@ -15,19 +15,16 @@ import com.xmb.muldecodedemo.utils.FileUtils;
 import com.xmb.muldecodedemo.utils.OutputImageFormat;
 import com.xmb.muldecodedemo.utils.VideoToFrames;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener, VideoToFrames.Callback{
+public class MainActivity extends AppCompatActivity implements View.OnClickListener{
     private static final String TAG = "MainActivity";
 
     VideoEditorView videoEditorView;
 
     // Used to load the 'native-lib' library on application startup.
-//    static {
-//        System.loadLibrary("native-lib");
-//    }
+    static {
+        System.loadLibrary("decoder");
+    }
 
-//    static {
-//        System.loadLibrary("rtmp-handle");
-//    }
     private boolean decodeFlag0 = false;
     private boolean decodeFlag1 = false;
     OutputImageFormat outputImageFormat;
@@ -48,8 +45,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         videoEditorView = (VideoEditorView)findViewById(R.id.video_editor);
 
         checkPermission();
-
-        //video2jpeg();
     }
 
     private void video2jpeg() {
@@ -78,8 +73,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Log.d(TAG, "onCreate: outputImageFormat: " + outputImageFormat.toString());
 
         VideoToFrames videoToFrames = new VideoToFrames();
-        videoToFrames.setCallback(this);
-
         try {
             videoToFrames.setSaveFrames(outputDirasset0, outputImageFormat);
             //updateInfo("运行中...");
@@ -98,6 +91,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 break;
             case R.id.next:
                 Log.d(TAG, "onClick: next");
+                String inputFile = FileUtils.getSDPath() +"/" + "asset.mp4";
+                initdecoder(inputFile);
                 //startActivity(new Intent(MainActivity.this, VideoEditorActivity.class));
                 break;
         }
@@ -128,50 +123,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-    public void onDecodeFrame(int index) {
-//        Message msg = handler.obtainMessage();
-//        msg.obj = "运行中...第" + index + "帧";
-//        handler.sendMessage(msg);
-        //Log.d(TAG, "onDecodeFrame: " + index + " frame");
-    }
-
-    public void onFinishDecode() {
-//        Message msg = handler.obtainMessage();
-//        msg.obj = "完成！所有图片已存储到" + outputDir;
-//        handler.sendMessage(msg);
-        Log.d(TAG, "onFinishDecode: finish");
-
-        if (decodeFlag1 == true) {
-            Log.d(TAG, "onFinishDecode: videoEditorView");
-
-            videoEditorView.start_decode();
-        }
-
-        if (decodeFlag1 == false) {
-            decodeFlag1 = true;
-
-            VideoToFrames videoToFrames = new VideoToFrames();
-            videoToFrames.setCallback(this);
-            try {
-                videoToFrames.setSaveFrames(outputDirasset1, outputImageFormat);
-                //updateInfo("运行中...");
-                videoToFrames.decode(inputFile1);
-            } catch (Throwable t) {
-                t.printStackTrace();
-            }
-            Log.d(TAG, "onFinishDecode: second");
-        }
-
-
-    }
 
     /**
      * A native method that is implemented by the 'native-lib' native library,
      * which is packaged with this application.
      */
 
-//    public native int init(String url, int timeOut);
-//    public native int sendSpsAndPps(byte[] sps, int spsLen, byte[] pps, int ppsLen, long time);
-//    public native int sendVideoFrame(byte[] frame, int len, long time, boolean isKeyFrame);
-//    public native int close();
+    public native String initdecoder(String path);
 }

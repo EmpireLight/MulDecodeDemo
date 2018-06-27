@@ -1,31 +1,21 @@
 //
 // Created by Administrator on 2018/6/25 0025.
 //
-
-
+#include <jni.h>
 #include "decoder.h"
 
-class decoder {
-private:
+char *input_filename;
 
-    char *input_filename;
+int frame_count;
+AVPacket *packet;
+AVFrame *pFrame;
+AVCodec *codec;
+AVCodecContext *avctx;
 
-    int frame_count;
-    AVPacket *packet;
-    AVFrame *pFrame;
-    AVCodec *codec;
-    AVCodecContext *avctx;
+//rgb frame cache
+AVFrame	*pFrameRGB;
 
-    //rgb frame cache
-    AVFrame	*pFrameRGB;
-
-public:
-
-    void initdecoder(char *filename);
-    void decodeOneFrame();
-};
-
-void decoder::initdecoder(char *filename) {
+void initdecoder(char *filename) {
     AVFormatContext *ic = NULL;
     int err, i, ret;
     int st_index[AVMEDIA_TYPE_NB];
@@ -77,7 +67,7 @@ void decoder::initdecoder(char *filename) {
 
     /* open the streams */
     if (st_index[AVMEDIA_TYPE_AUDIO] >= 0) {
-        LOGD("audio is exited");
+        LOGD("audio is exited, streamIndex: %d", st_index[AVMEDIA_TYPE_AUDIO]);
     }
 
     if (st_index[AVMEDIA_TYPE_VIDEO] >= 0) {
@@ -125,7 +115,7 @@ void decoder::initdecoder(char *filename) {
     }
 }
 
-void decoder::decodeOneFrame() {
+void decodeOneFrame() {
     int ret;
 
     // 解码
@@ -135,4 +125,39 @@ void decoder::decodeOneFrame() {
         LOGD("ret = %x", ret);
     frame_count++;
     LOGD("decode %d frame", frame_count);
+}
+
+
+char* jstring2string(JNIEnv* env, jstring jstr)
+{
+    char* rtn = NULL;
+    jclass clsstring = env->FindClass("java/lang/String");
+    jstring strencode = env->NewStringUTF("utf-8");
+    jmethodID mid = env->GetMethodID(clsstring, "getBytes", "(Ljava/lang/String;)[B");
+    jbyteArray barr= (jbyteArray)env->CallObjectMethod(jstr, mid, strencode);
+    jsize alen = env->GetArrayLength(barr);
+    jbyte* ba = env->GetByteArrayElements(barr, JNI_FALSE);
+
+    if (alen > 0)
+    {
+        rtn = (char*)malloc(alen + 1);
+
+        memcpy(rtn, ba, alen);
+        rtn[alen] = 0;
+    }
+    env->ReleaseByteArrayElements(barr, ba, 0);
+    return rtn;
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_com_xmb_muldecodedemo_MainActivity_initdecoder(JNIEnv *env, jobject instance, jstring _path) {
+    char *path =  jstring2string(env, _path);
+
+    LOGD("path: %s", path);
+
+    // TODO
+    initdecoder(path);
+
+    return env->NewStringUTF("ok");
 }
