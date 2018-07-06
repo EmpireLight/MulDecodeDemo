@@ -64,9 +64,14 @@
             <!--android:id="@+id/addImgView"-->
             <!--android:layout_width="match_parent"-->
             <!--android:layout_height="match_parent" />-->
-
     <!--</RelativeLayout>-->
 
+    <!--<view-->
+        <!--android:id="@+id/recyclerView"-->
+        <!--android:layout_width="match_parent"-->
+        <!--android:layout_height="120dp"-->
+        <!--android:background="#554C6E"-->
+        <!--android:scrollbars="none" />-->
     <!--<android.support.v7.widget.RecyclerView-->
         <!--android:id="@+id/recyclerView"-->
         <!--android:layout_width="match_parent"-->

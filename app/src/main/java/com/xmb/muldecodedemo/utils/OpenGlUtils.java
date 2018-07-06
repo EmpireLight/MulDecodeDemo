@@ -40,6 +40,22 @@ public class OpenGlUtils {
             1.0f, 1.0f,
     };
 
+    public static void bindTexture2D(int textureId,int activeTextureID,int handle,int idx){
+        if (textureId != NO_TEXTURE) {
+            GLES20.glActiveTexture(activeTextureID);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
+            GLES20.glUniform1i(handle, idx);
+        }
+    }
+
+    public static void bindTextureOES(int textureId,int activeTextureID,int handle,int idx){
+        if (textureId != NO_TEXTURE) {
+            GLES20.glActiveTexture(activeTextureID);
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId);
+            GLES20.glUniform1i(handle, idx);
+        }
+    }
+
     public static int createProgram(String vertexSource, String fragmentSource) {
         int vertextShader;
         int fragmentShader;
@@ -115,6 +131,7 @@ public class OpenGlUtils {
         int[] texture = new int[1];
         GLES20.glGenTextures(1, texture, 0);
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, texture[0]);
+        checkGlError("glBindTexture");
 
         /**设置缩小过滤为使用纹理中坐标最接近的一个像素的颜色作为需要绘制的像素颜色*/
         GLES20.glTexParameterf(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GL10.GL_TEXTURE_MIN_FILTER,GL10.GL_LINEAR);
@@ -131,6 +148,7 @@ public class OpenGlUtils {
         int[] texture = new int[1];
         GLES20.glGenTextures(1, texture, 0);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture[0]);
+        checkGlError("glBindTexture");
 
         /**设置缩小过滤为使用纹理中坐标最接近的一个像素的颜色作为需要绘制的像素颜色*/
         GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER,GL10.GL_LINEAR);
@@ -185,5 +203,11 @@ public class OpenGlUtils {
             Log.e("OpenGlUtils", msg);
             throw new RuntimeException(msg);
         }
+    }
+
+    public static void deleteTexture(int textureId ){
+        int[] textures = new int[1];
+        textures[0] = textureId;
+        GLES20.glDeleteTextures(1,textures,0);
     }
 }

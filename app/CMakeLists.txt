@@ -11,7 +11,9 @@ include_directories(
 #创建动态库decoder，由decoder.cpp编译链接生成
 add_library( decoder
              SHARED
-             src/main/cpp/decoder.cpp)
+             src/main/cpp/decoder.cpp
+             src/main/cpp/BlockingQueue.cpp
+             src/main/cpp/FFmpegJni.cpp)
 
 #创建动态库decoder,直接引用libdecoder.so
 #add_library( decoder

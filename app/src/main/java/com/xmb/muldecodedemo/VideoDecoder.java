@@ -40,11 +40,9 @@ public class VideoDecoder {
 
     public static LinkedBlockingQueue<byte[]> videoQueue;
 
-    int mInputVideoWidth = -1;
-    int mInputVideoHeight= -1;
-    int mOutputVideoWidth = -1;
-    int mOutputVideoHeight = -1;
-    long duration = -1;
+    public int videoWidth = -1;
+    public int videoHeight= -1;
+    public long duration = -1;
 
     public VideoDecoder() {}
 
@@ -62,7 +60,7 @@ public class VideoDecoder {
         }
 
         int count = mExtractor.getTrackCount();//得到轨道数
-        Log.d(TAG, "create: count = "+ count);
+        Log.v(TAG, "create: count = "+ count);
 
         //解析Mp4,找到对应的流
         int videoTrackIndex = -1;//定义trackIndex为视轨的id
@@ -70,19 +68,20 @@ public class VideoDecoder {
         for (int i = 0; i < count; i++) {
             MediaFormat mediaFormat = mExtractor.getTrackFormat(i);    //获得第id个Track对应的MediaForamt
             String mime = mediaFormat.getString(MediaFormat.KEY_MIME);    //再获取该Track对应的KEY_MIME字段
+            Log.v(TAG, "mime: " + mime);
 
             if (mime.startsWith("audio")) {//视轨的KEY_MIME是以"video/"开头的，音轨是"audio/"
                 audioTrackIndex = i;
-                Log.d(TAG, "createDecoder: audio count = " + i);
+                Log.v(TAG, "createDecoder: audio count = " + i);
                 //TODO 音频解码器
             } else if (mime.startsWith("video")) {
                 videoTrackIndex = i;
-                Log.d(TAG, "createDecoder: video count = " + i);
-                mOutputVideoWidth = mInputVideoWidth = mediaFormat.getInteger(MediaFormat.KEY_WIDTH);
-                mOutputVideoHeight = mInputVideoHeight = mediaFormat.getInteger(MediaFormat.KEY_HEIGHT);
+                Log.v(TAG, "createDecoder: video count = " + i);
+                videoWidth = mediaFormat.getInteger(MediaFormat.KEY_WIDTH);
+                videoHeight = mediaFormat.getInteger(MediaFormat.KEY_HEIGHT);
                 duration = mediaFormat.getLong(MediaFormat.KEY_DURATION);//us
-                Log.d(TAG, "createDecoder: mInputVideoWidth = " +mInputVideoWidth+ ", mInputVideoHeight = " +mInputVideoHeight);
-                Log.d(TAG, "createDecoder: duration = " + duration/1000000 + " second");
+                Log.v(TAG, "createDecoder: mInputVideoWidth = " +videoWidth+ ", mInputVideoHeight = " + videoHeight);
+                Log.v(TAG, "createDecoder: duration = " + duration/1000000 + " second");
 
                 //选择视轨所在的轨道子集(这样在之后调用readSampleData()/getSampleTrackIndex()方法时候，
                 // 返回的就只是视轨的数据了，其他轨的数据不会被返回)
@@ -91,13 +90,15 @@ public class VideoDecoder {
                 //根据上面获取到的信息创建解码器
                 try {
                     mVideoDecoder = MediaCodec.createDecoderByType(mime);
+
                 } catch (IOException e) {
                     e.printStackTrace();
                     throw new RuntimeException("createDecoderByType fail");
                 }
 
+//              showSupportedColorFormat(mVideoDecoder.getCodecInfo());
                 if(mVideoDecoder == null) {
-                    Log.d(TAG, "create: decode fail");
+                    Log.v(TAG, "create: decode fail");
                 }
 
                 //将SurfaceTexture作为参数创建一个Surface，用来接收解码视频流
@@ -107,10 +108,52 @@ public class VideoDecoder {
                 //第四个参数上1表示编码器，0是否表示解码器呢？？
                 mVideoDecoder.configure(mediaFormat, surface,null,0);
                 mVideoDecoder.start();  //当configure好后，就可以调用start()方法来请求向MediaCodec的inputBuffer中写入数据了
-                Log.d(TAG, "create: decode successful");
+                Log.v(TAG, "create: decode successful");
             }
         }
     }
+
+    /**
+     * 列举AVC编码器支持的420编码格式
+     * @param mediaCodecInfo
+     * @return
+     */
+    private static int showSupportedColorFormat(MediaCodecInfo mediaCodecInfo) {
+        int matchformat = -1;
+        MediaCodecInfo.CodecCapabilities codecCapabilities = mediaCodecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC);
+        for (int i = 0; i < codecCapabilities.colorFormats.length; i++) {
+            switch (codecCapabilities.colorFormats[i]) {
+                /**
+                 * 原则上I420 和 yv12的yv排列不一样，但是根据网站
+                 * https://bigflake.com/mediacodec/
+                 * 得知，只有I420
+                 */
+                case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar://I420 或  YV12
+                    Log.v(TAG, "supported color format::" + codecCapabilities.colorFormats[i] + " COLOR_FormatYUV420Planar");
+                    break;
+                case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedPlanar:
+                    Log.v(TAG, "supported color format::" + codecCapabilities.colorFormats[i] + " COLOR_FormatYUV420PackedPlanar");
+                    break;
+                case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar://NV12 YYYYYYYY UVUV或NV21 YYYYYYYY VUVU（NV12大多数都支持）
+                    matchformat = MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar;
+                    Log.v(TAG, "supported color format::" + codecCapabilities.colorFormats[i] + " COLOR_FormatYUV420SemiPlanar");
+                    break;
+                case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420PackedSemiPlanar:
+                    Log.v(TAG, "supported color format::" + codecCapabilities.colorFormats[i] + " COLOR_FormatYUV420PackedSemiPlanar");
+                    break;
+                case MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible:
+                    Log.v(TAG, "supported color format::" + codecCapabilities.colorFormats[i] + " COLOR_FormatYUV420Flexible");
+                    break;
+                default:
+                    Log.v(TAG, "Unknow Format");
+                    break;
+            }
+        }
+
+        return 0;
+    }
+
+    private long diff, lastTime;
 
     public void videoDecode() {
         //向MediaCodec的inputBuffer中写入数据，而数据就是来自上面MediaExtractor中解析出的Track
@@ -125,7 +168,6 @@ public class VideoDecoder {
         ByteBuffer[] outputBuffers = mVideoDecoder.getOutputBuffers();
 
         int count = 0;
-
         while(!isVideoEOS) {
             //得到那个可以使用的ByteBuffer的id
             int inputBufferIndex = mVideoDecoder.dequeueInputBuffer(TIMEOUT_US);
@@ -136,7 +178,7 @@ public class VideoDecoder {
                     isVideoEOS = true;
                     mVideoDecoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
                 } else {
-                    mVideoDecoder.queueInputBuffer(inputBufferIndex, 0, sampleSize, mExtractor.getSampleTime(), 0); //将已写入数据的id为inputBufferIndex的ByteBuffer提交给MediaCodec进行解码
+                    mVideoDecoder.queueInputBuffer(inputBufferIndex, 0, sampleSize, mExtractor.getSampleTime(), 0);
                     mExtractor.advance();  //在MediaExtractor执行完一次readSampleData方法后，需要调用advance()去跳到下一个sample，然后再次读取数据
                 }
             }
@@ -150,7 +192,7 @@ public class VideoDecoder {
 
                     try {
                         videoQueue.put(outData);
-                        Log.d(TAG, "put " + count++);
+                        Log.v(TAG, "put " + count++);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
@@ -159,7 +201,7 @@ public class VideoDecoder {
 
                     //解码未解完的数据
                     outputBufferIndex = mVideoDecoder.dequeueOutputBuffer(videoBufferInfo, TIMEOUT_US);
-                    Log.d(TAG, "surface = null ," + count++);
+                    Log.v(TAG, "surface = null ," + count++);
                 }
             } else {
                 while(outputBufferIndex >=0) {
@@ -180,7 +222,7 @@ public class VideoDecoder {
                             //如果缓冲区里的可展示时间>当前视频播放的进度，就休眠一下
                             mVideoDecoder.releaseOutputBuffer(outputBufferIndex, true);
                             outputBufferIndex = mVideoDecoder.dequeueOutputBuffer(videoBufferInfo, TIMEOUT_US);
-                            //Log.d(TAG, "videoDecode: " + count++);
+                            //Log.v(TAG, "videoDecode: " + count++);
                             break;
                         //将该ByteBuffer释放掉，以供缓冲区的循环使用。如果没有这一步的话，
                         //会导致上面返回的inputBufferIndex一直为-1，使数据读写操作无法进行下去。

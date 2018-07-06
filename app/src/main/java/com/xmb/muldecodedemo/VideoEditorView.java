@@ -1,59 +1,40 @@
 package com.xmb.muldecodedemo;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.SurfaceTexture;
 import android.opengl.GLES20;
-import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
 import android.util.AttributeSet;
 import android.util.Log;
-import android.view.Surface;
 
-import com.xmb.muldecodedemo.filter.OesFilter;
-import com.xmb.muldecodedemo.filter.WaterMarkFilter;
+import com.xmb.muldecodedemo.filter.BackVideoFilter;
+import com.xmb.muldecodedemo.filter.RGBFilter;
+import com.xmb.muldecodedemo.utils.FBO;
+import com.xmb.muldecodedemo.filter.ImageFilter;
+import com.xmb.muldecodedemo.filter.PassThroughFilter;
+import com.xmb.muldecodedemo.filter.YUVFilter;
 import com.xmb.muldecodedemo.utils.FileUtils;
-import com.xmb.muldecodedemo.utils.OpenGlUtils;
-import com.xmb.muldecodedemo.utils.OutputImageFormat;
-
-import java.io.File;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 /**
+ * 合成:
+ * 前景图层(模板)：frontFilter
+ * 中景图层(黑白)：middleFilter
+ * 背景图层(用户选择)：backFilter
  * Created by Administrator on 2018/6/20 0020.
  */
 
-public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Renderer, SurfaceTexture.OnFrameAvailableListener{
+public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Renderer, SurfaceTexture.OnFrameAvailableListener {
     private final static String TAG = "VideoEditorView";
 
-    private Context mContext;
+    Context context;
+    private boolean first;
 
-    int mVideoTextureId;
-    SurfaceTexture mVideoSurfaceTexture;
-    VideoDecoder videoDecoder;
-
-    int viewWidth, viewHeight;
-    int screenWidth, screenHeight;
-
-    OesFilter oesFilter;
-    WaterMarkFilter waterMarkFilter0;
-    WaterMarkFilter waterMarkFilter1;
-
-    float[] matrix;
-
-    String DirAsset0;
-    String DirAsset1;
-    Bitmap asset0Bitmap;
-    Bitmap asset1Bitmap;
-    String loadFile0;
-    String loadFile1;
-
-    private OutputImageFormat outputImageFormat;
-
-    int frame_count;
+    private long currentTime;
+    private long lastTime;
+    private long diff;
 
     public VideoEditorView(Context context) {
         this(context, null);
@@ -61,87 +42,82 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
 
     public VideoEditorView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        mContext = context;
+        this.context = context;
 
         // 设置OpenGl ES的版本为2.0
-        setEGLContextClientVersion(2);
+        setEGLContextClientVersion(3);
+        setEGLConfigChooser(8, 8, 8, 8, 16, 0);
         // 设置与当前GLSurfaceView绑定的Renderer
         setRenderer(this);
         // 设置渲染的模式
         setRenderMode(RENDERMODE_WHEN_DIRTY);
     }
 
-    private void init() {
-        //注意这里，创建了一个SurfaceTexture
-        mVideoTextureId = OpenGlUtils.loadExternalOESTextureID();
-        mVideoSurfaceTexture = new SurfaceTexture(mVideoTextureId);
-        mVideoSurfaceTexture.setOnFrameAvailableListener(this);
+    public BackVideoFilter backFilter;
 
-        oesFilter = new OesFilter(mContext);
-        oesFilter.setTextureID(mVideoTextureId);
+    public YUVFilter middleFilter;
+    public YUVFilter frontFilter;
 
-        DirAsset0 = FileUtils.getSDPath() +"/" + "asset0";
-        DirAsset1 = FileUtils.getSDPath() +"/" + "asset1";
+//    public RGBFilter middleFilter;
+//    public RGBFilter frontFilter;
 
-        frame_count = 1;
+    public ImageFilter middleImgFilter;
+    public ImageFilter frontImgFilter;
+    public PassThroughFilter passThroughFilter;
+    public FBO fbo;
 
-//        waterMarkFilter0 = new WaterMarkFilter(mContext);
-//        loadFile0 = String.format(DirAsset0+ "/" + "frame_%05d.jpg", frame_count);
-//        Log.d(TAG, "init: loadFile:" + loadFile0);
-//        File f=new File(loadFile0);
-//        if(!f.exists())
-//        {
-//            Log.e(TAG, "onDrawFrame: loadFile no exit");
-//        }
-//        asset0Bitmap = BitmapFactory.decodeFile(loadFile0);
-//        waterMarkFilter0.setWaterMark(asset0Bitmap);
-//
-//        waterMarkFilter1 = new WaterMarkFilter(mContext);
-//        loadFile1 = String.format(DirAsset1+ "/" + "frame_%05d.jpg", frame_count);
-//        Log.d(TAG, "init: loadFile:" + loadFile1);
-//        asset1Bitmap = BitmapFactory.decodeFile(loadFile1);
-//
-//        if ((asset0Bitmap == null) | (asset1Bitmap == null)) {
-//            Log.e(TAG, "init: bitmap null" );
-//        }
-//
-//        waterMarkFilter0.setPosition(0, 0, 0, 0);
-//        waterMarkFilter1.setWaterMark(asset1Bitmap);
-//        waterMarkFilter1.setPosition(0, 0, 0, 0);
-    }
+    private int viewWidth, viewHeight;
+    private int videoWidth, videoHeight;
 
-    public void start_decode() {
-        Surface surface = new Surface(mVideoSurfaceTexture);
+    public SurfaceTexture mVideoSurfaceTexture;
 
-        String SDpath = FileUtils.getSDPath();
-
-        String inputFile = SDpath +"/" + "asset.mp4";
-        Log.d(TAG, "init: fileName = " + inputFile);
-
-        videoDecoder = new VideoDecoder();
-        videoDecoder.createDecoder(inputFile, surface);
-
-        float dividedWidth = viewWidth * 1.0f / videoDecoder.mInputVideoWidth;
-        float dividedHeight = viewHeight * 1.0f / videoDecoder.mInputVideoHeight;
-        if (dividedWidth > dividedHeight) {//屏幕比较宽
-            screenWidth = (int) (videoDecoder.mInputVideoWidth * dividedHeight);
-            screenHeight = viewHeight;
-        } else {
-            screenWidth = viewWidth;
-            screenHeight = (int) (videoDecoder.mInputVideoHeight * dividedWidth);
-        }
-
-        Thread thread = new Thread() {
-            public void run() {
-                videoDecoder.videoDecode();
-            }
-        };
-        thread.start();
-    }
+    //显示视口参数
+    int disVPx, disVPy;
+    int disVPWidth, disVPHeight;
 
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
-        init();
+        Log.e(TAG, "onSurfaceCreated: ");
+
+        String DirAsset0 = FileUtils.getSDPath() + "/" + "asset0";
+        String DirAsset1 = FileUtils.getSDPath() + "/" + "asset1";
+
+        String asset0MP4 = FileUtils.getSDPath() + "/" + "asset0.mp4";
+        String asset1MP4 = FileUtils.getSDPath() + "/" + "asset1.mp4";
+        String assetMP4 = FileUtils.getSDPath() + "/" + "asset.mp4";
+
+        int frame_count = 1;
+        String loadFile = null;
+        loadFile = String.format(DirAsset0 + "/" + "frame_%05d.jpg", frame_count);
+        middleImgFilter = new ImageFilter(context);
+        middleImgFilter.init(loadFile);
+
+        loadFile = String.format(DirAsset1 + "/" + "frame_%05d.jpg", frame_count);
+        frontImgFilter = new ImageFilter(context);
+        frontImgFilter.init(loadFile);
+
+        middleFilter = new YUVFilter(context);
+        middleFilter.init(asset0MP4, 0);
+
+        frontFilter = new YUVFilter(context);
+        frontFilter.init(asset1MP4, 1);
+
+//        middleFilter = new RGBFilter(context);
+//        middleFilter.init(asset0MP4, 0);
+//
+//        frontFilter = new RGBFilter(context);
+//        frontFilter.init(asset1MP4, 1);
+
+        backFilter = new BackVideoFilter(context);
+        //注意这里，创建了一个SurfaceTexture
+        mVideoSurfaceTexture = new SurfaceTexture(backFilter.getTextureID());
+        mVideoSurfaceTexture.setOnFrameAvailableListener(this);
+
+        Log.e(TAG, "init: fileName = " + assetMP4);
+        backFilter.init(assetMP4, mVideoSurfaceTexture);
+
+        passThroughFilter = new PassThroughFilter(context);
+        passThroughFilter.init();
     }
 
     @Override
@@ -149,25 +125,94 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
         GLES20.glViewport(0, 0, width, height);
         viewWidth = width;
         viewHeight = height;
+        Log.d(TAG, "onSurfaceChanged: viewWidth:" + viewWidth + " viewHeight:" + viewHeight);
 
-//        MatrixUtils.getShowMatrix(matrix, videoDecoder.mInputVideoWidth, videoDecoder.mInputVideoHeight, viewWidth, viewHeight);
-//        oesFilter.setMVPMatrix(matrix);
-        Log.e(TAG, "onSurfaceChanged: " + width +" " + height);
-//        start_decode();
-        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        backFilter.onSurfaceCreated(width, height);
+//        middleFilter.onSurfaceCreated(width, height);
+
+        /**
+         * 视口（Viewport）就是最终渲染结果显示的目的地
+         * viewport视口以模板视频的宽高为基准满屏适配
+         *
+         * 应该有两个视口，一个是用户调试用的视口
+         * 一个是最后合成渲染的视口，这个视口应该是前景或中景的分辨率大小
+         */
+//        float videoRatio = (float)frontFilter.getYUVWidth(0)/frontFilter.getYUVHeight(0);
+//        disVPWidth = (int)((float)viewHeight*videoRatio);//视口宽度;
+//        disVPHeight = viewHeight;
+//        Log.i(TAG, "onSurfaceChanged: VPWidth:" + disVPWidth +" VPHeight:" + disVPHeight);
+//        disVPx = viewWidth/2- disVPWidth/2;
+//        disVPy = viewHeight/2- disVPHeight/2;
+//        GLES20.glViewport(disVPx, disVPy, disVPWidth, disVPHeight);
+//
+//        Log.i(TAG, "onSurfaceChanged: VPx: "+disVPx );
+//        Log.i(TAG, "onSurfaceChanged: VPy: "+disVPy );
+//        Log.i(TAG, "onSurfaceChanged: VPWidth: "+disVPWidth );
+//        Log.i(TAG, "onSurfaceChanged: VPHeight: "+disVPHeight );
+
+        fbo = FBO.newInstance().create(1920, 1080);
+
+        //若是不改变Viewport大小视频视频， 那么最后编码的时候应该会导致黑边也会被录制下来
     }
+
+    int count = 0;
 
     @Override
     public void onDrawFrame(GL10 gl) {
-        //Log.d(TAG, "onDrawFrame: ");
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
+        Log.i(TAG, "onDrawFrame: "+count++);
+
+        if ( !first ) {//创建时默认会启动一次，若这时媒体文件尚未打开将会导致程序闪退
+            first = true;
+            return;
+        }
+
+        diff = System.currentTimeMillis() - lastTime;
+        if (diff < 66) {
+            mVideoSurfaceTexture.updateTexImage();
+            return;
+        }
+        Log.e(TAG, "onDrawFrame: diff " + diff);
+        lastTime = System.currentTimeMillis();
+
+//        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+//        GLES20.glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+//        GLES20.glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+//        GLES20.glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
+        GLES20.glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT | GLES20.GL_COLOR_BUFFER_BIT);
 
         mVideoSurfaceTexture.updateTexImage();
-        oesFilter.draw();
+//        backFilter.onDrawFrame(backFilter.getTextureID());
+
+//      fbo.bind();
+//        GLES20.glEnable(GLES20.GL_BLEND);
+//        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
+//        middleFilter.onDrawFrame();
+//        GLES20.glDisable(GLES20.GL_BLEND);
+//
+//    fbo.unbind();
+//       passThroughFilter.onDrawFrame(fbo.getFrameBufferTextureId());
+//
+//        GLES20.glEnable(GLES20.GL_BLEND);
+//        GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
+//        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
+        frontFilter.onDrawFrame();
+//        GLES20.glDisable(GLES20.GL_BLEND);
+
+        //        GLES20.glEnable(GLES20.GL_BLEND);
+//        GLES20.glBlendFunc(GLES20.GL_DST_COLOR, GLES20.GL_ZERO);
+//        frontImgFilter.onDrawFrame(frontImgFilter.getTextureID());
+//        GLES20.glDisable(GLES20.GL_BLEND);
+
+//        GLES20.glEnable(GLES20.GL_BLEND);
+//        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
+//        middleImgFilter.onDrawFrame(middleImgFilter.getTextureID());
+//        GLES20.glDisable(GLES20.GL_BLEND);
     }
 
     @Override
     public void onFrameAvailable(SurfaceTexture surfaceTexture) {
         this.requestRender();
     }
+
 }

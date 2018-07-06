@@ -5,20 +5,69 @@
 #ifndef MULDECODEDEMO_DECODER_H
 #define MULDECODEDEMO_DECODER_H
 
-#include <android/log.h>
+#include "BlockingQueue.h"
 
-extern "C"
-{
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libswscale/swscale.h>
-#include <libavutil/imgutils.h>
+class Decoder {
+private:
+    int width;
+    int height;
+    long duration;
+
+public:
+    Decoder();
+    ~Decoder();
+
+    AVFormatContext * avFormatContext;
+    AVCodec * avCodec;
+    AVCodecContext * avCodecContext;
+    AVFrame * avFrame;
+    AVFrame * YUVFrame;
+    int st_index[AVMEDIA_TYPE_NB];
+
+    size_t yuvSize;
+    size_t yFrameSize;
+    size_t uvFrameSize;
+
+    int frame_count;
+    BlockingQueue *q;
+
+//Video
+    int video_stream;
+    AVStream *video_st;
+    PacketQueue videoq;
+    //int width, height, xleft, ytop;
+    struct SwsContext *img_convert_ctx;
+//Audio
+    int audio_stream;
+    AVStream *audio_st;
+    PacketQueue audioq;
+    int audio_volume;
+    int sample_rate;
+    int channels;
+    int64_t channel_layout;
+    struct SwrContext *swr_ctx;
+//Subtitle
+    int subtitle_stream;
+    AVStream *subtitle_st;
+    PacketQueue subtitleq;
+
+    int eof;
+    char *filename;
+
+    int init();
+    void start(const char *filename);
+    int stop();
+    void read();
+    int decode(uint8_t* data);
+
+    void stream_component_close(int stream_index);
+
+    static void* read_pth(void *arg);
+
+    int getVideoWidth();
+    int getVideoHeight();
+
+    pthread_cond_t continue_read_thread;
 };
-
-#define LOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, "ProjectName", __VA_ARGS__)
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG ,  "ProjectName", __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO  ,  "ProjectName", __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN  ,  "ProjectName", __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR  , "ProjectName", __VA_ARGS__)
 
 #endif //MULDECODEDEMO_DECODER_H

@@ -15,7 +15,7 @@ import com.xmb.muldecodedemo.utils.FileUtils;
 import com.xmb.muldecodedemo.utils.OutputImageFormat;
 import com.xmb.muldecodedemo.utils.VideoToFrames;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener{
+public class MainActivity extends AppCompatActivity implements View.OnClickListener, VideoToFrames.Callback{
     private static final String TAG = "MainActivity";
 
     VideoEditorView videoEditorView;
@@ -45,7 +45,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         videoEditorView = (VideoEditorView)findViewById(R.id.video_editor);
 
         checkPermission();
+
+        //video2jpeg();
     }
+
 
     private void video2jpeg() {
 
@@ -73,6 +76,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Log.d(TAG, "onCreate: outputImageFormat: " + outputImageFormat.toString());
 
         VideoToFrames videoToFrames = new VideoToFrames();
+        videoToFrames.setCallback(this);
         try {
             videoToFrames.setSaveFrames(outputDirasset0, outputImageFormat);
             //updateInfo("运行中...");
@@ -91,11 +95,33 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 break;
             case R.id.next:
                 Log.d(TAG, "onClick: next");
-                String inputFile = FileUtils.getSDPath() +"/" + "asset.mp4";
-                initdecoder(inputFile);
-                //startActivity(new Intent(MainActivity.this, VideoEditorActivity.class));
                 break;
         }
+    }
+
+    @Override
+    public void onFinishDecode() {
+        if (decodeFlag0 = true) {
+            VideoToFrames videoToFrames = new VideoToFrames();
+            try {
+                Log.e(TAG, "onFinishDecode: decodeFlag0: " + decodeFlag0 );
+                videoToFrames.setSaveFrames(outputDirasset1, outputImageFormat);
+                //videoToFrames.setCallback(this);
+                //updateInfo("运行中...");
+                videoToFrames.decode(inputFile1);
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        }
+
+        if (decodeFlag0 == false) {
+            decodeFlag0 = true;
+        }
+    }
+
+    @Override
+    public void onDecodeFrame(int index) {
+
     }
 
     /**检查权限*/
@@ -123,11 +149,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-
     /**
      * A native method that is implemented by the 'native-lib' native library,
      * which is packaged with this application.
      */
-
-    public native String initdecoder(String path);
 }
