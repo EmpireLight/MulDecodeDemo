@@ -5,31 +5,39 @@
 #ifndef MULDECODEDEMO_DECODER_H
 #define MULDECODEDEMO_DECODER_H
 
-#include "BlockingQueue.h"
+#include "Queue.h"
 
 class Decoder {
 private:
     int width;
     int height;
     long duration;
+    int decoderNum;
 
 public:
     Decoder();
     ~Decoder();
 
     AVFormatContext * avFormatContext;
-    AVCodec * avCodec;
-    AVCodecContext * avCodecContext;
+    AVCodecContext * avctxAudio;
+    AVCodecContext * avctxVideo;
+    AVCodecContext * avctxSubtitle;
     AVFrame * avFrame;
     AVFrame * YUVFrame;
     int st_index[AVMEDIA_TYPE_NB];
+    uint8_t *frame_buffer_out;
 
     size_t yuvSize;
     size_t yFrameSize;
     size_t uvFrameSize;
 
     int frame_count;
-    BlockingQueue *q;
+    MyPacketQueue *q;
+
+    int abort_request;
+    int paused;
+    int seek_req;
+    int64_t seek_pos;
 
 //Video
     int video_stream;
@@ -54,8 +62,9 @@ public:
     int eof;
     char *filename;
 
+    int stream_component_open(int stream_index);
     int init();
-    void start(const char *filename);
+    void start(const char *filename, int num);
     int stop();
     void read();
     int decode(uint8_t* data);

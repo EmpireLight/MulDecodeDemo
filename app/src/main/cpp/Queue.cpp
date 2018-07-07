@@ -3,10 +3,10 @@
 //
 
 #include <malloc.h>
-#include "BlockingQueue.h"
+#include "Queue.h"
 #include "LogJni.h"
 
-BlockingQueue::BlockingQueue() {
+MyPacketQueue::MyPacketQueue() {
 
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&cond, NULL);
@@ -15,13 +15,13 @@ BlockingQueue::BlockingQueue() {
     flush_pkt.data = (uint8_t *)&flush_pkt;
 }
 
-BlockingQueue::~BlockingQueue() {
+MyPacketQueue::~MyPacketQueue() {
 //    flush();
     pthread_mutex_destroy(&mutex);
     pthread_cond_destroy(&cond);
 }
 
-int BlockingQueue::packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
+int MyPacketQueue::packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
 {
     MyAVPacketList *pkt1;
 
@@ -51,7 +51,7 @@ int BlockingQueue::packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
     return 0;
 }
 
-int BlockingQueue::packet_queue_put(PacketQueue *q, AVPacket *pkt)
+int MyPacketQueue::packet_queue_put(PacketQueue *q, AVPacket *pkt)
 {
     int ret;
 
@@ -65,7 +65,7 @@ int BlockingQueue::packet_queue_put(PacketQueue *q, AVPacket *pkt)
     return ret;
 }
 
-int BlockingQueue::packet_queue_put_nullpacket(PacketQueue *q, int stream_index)
+int MyPacketQueue::packet_queue_put_nullpacket(PacketQueue *q, int stream_index)
 {
     AVPacket pkt1, *pkt = &pkt1;
     av_init_packet(pkt);
@@ -76,7 +76,7 @@ int BlockingQueue::packet_queue_put_nullpacket(PacketQueue *q, int stream_index)
 }
 
 /* packet queue handling */
-int BlockingQueue::packet_queue_init(PacketQueue *q)
+int MyPacketQueue::packet_queue_init(PacketQueue *q)
 {
     memset(q, 0, sizeof(PacketQueue));
     pthread_mutex_init(&q->mutex, NULL);
@@ -86,7 +86,7 @@ int BlockingQueue::packet_queue_init(PacketQueue *q)
     return 0;
 }
 
-void BlockingQueue::packet_queue_flush(PacketQueue *q)
+void MyPacketQueue::packet_queue_flush(PacketQueue *q)
 {
     MyAVPacketList *pkt, *pkt1;
 
@@ -104,7 +104,7 @@ void BlockingQueue::packet_queue_flush(PacketQueue *q)
     pthread_mutex_unlock(&q->mutex);
 }
 
-void BlockingQueue::packet_queue_destroy(PacketQueue *q)
+void MyPacketQueue::packet_queue_destroy(PacketQueue *q)
 {
     packet_queue_flush(q);
 
@@ -112,7 +112,7 @@ void BlockingQueue::packet_queue_destroy(PacketQueue *q)
     pthread_cond_destroy(&q->cond);
 }
 
-void BlockingQueue::packet_queue_abort(PacketQueue *q)
+void MyPacketQueue::packet_queue_abort(PacketQueue *q)
 {
     pthread_mutex_lock(&q->mutex);
 
@@ -123,7 +123,7 @@ void BlockingQueue::packet_queue_abort(PacketQueue *q)
     pthread_mutex_unlock(&q->mutex);
 }
 
-void BlockingQueue::packet_queue_start(PacketQueue *q)
+void MyPacketQueue::packet_queue_start(PacketQueue *q)
 {
     pthread_mutex_lock(&q->mutex);
     q->abort_request = 0;
@@ -133,7 +133,7 @@ void BlockingQueue::packet_queue_start(PacketQueue *q)
 
 //block 阻塞:1 非阻塞:0
 /* return < 0 if aborted, 0 if no packet and > 0 if packet.  */
-int BlockingQueue::packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *serial)
+int MyPacketQueue::packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *serial)
 {
     MyAVPacketList *pkt1;
     int ret;
@@ -152,7 +152,7 @@ int BlockingQueue::packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, in
             if (!q->first_pkt)
                 q->last_pkt = NULL;
             q->nb_packets--;
-//            LOGE("packet_queue_get nb_packets = %d", q->nb_packets);
+            LOGE("packet_queue_get nb_packets = %d", q->nb_packets);
             q->size -= pkt1->pkt.size + sizeof(*pkt1);
             q->duration -= pkt1->pkt.duration;
             *pkt = pkt1->pkt;
@@ -165,6 +165,7 @@ int BlockingQueue::packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, in
             ret = 0;
             break;
         } else {
+            LOGE("packet_queue_get nb_packets = %d pthread_cond_wait", q->nb_packets);
             pthread_cond_wait(&q->cond, &q->mutex);
         }
     }

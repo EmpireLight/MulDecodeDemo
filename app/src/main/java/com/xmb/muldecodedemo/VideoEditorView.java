@@ -8,12 +8,14 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 import com.xmb.muldecodedemo.filter.BackVideoFilter;
-import com.xmb.muldecodedemo.filter.RGBFilter;
 import com.xmb.muldecodedemo.utils.FBO;
 import com.xmb.muldecodedemo.filter.ImageFilter;
 import com.xmb.muldecodedemo.filter.PassThroughFilter;
 import com.xmb.muldecodedemo.filter.YUVFilter;
 import com.xmb.muldecodedemo.utils.FileUtils;
+
+import java.text.SimpleDateFormat;
+import java.util.Locale;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -58,9 +60,6 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
     public YUVFilter middleFilter;
     public YUVFilter frontFilter;
 
-//    public RGBFilter middleFilter;
-//    public RGBFilter frontFilter;
-
     public ImageFilter middleImgFilter;
     public ImageFilter frontImgFilter;
     public PassThroughFilter passThroughFilter;
@@ -81,7 +80,6 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
 
         String DirAsset0 = FileUtils.getSDPath() + "/" + "asset0";
         String DirAsset1 = FileUtils.getSDPath() + "/" + "asset1";
-
         String asset0MP4 = FileUtils.getSDPath() + "/" + "asset0.mp4";
         String asset1MP4 = FileUtils.getSDPath() + "/" + "asset1.mp4";
         String assetMP4 = FileUtils.getSDPath() + "/" + "asset.mp4";
@@ -102,11 +100,11 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
         frontFilter = new YUVFilter(context);
         frontFilter.init(asset1MP4, 1);
 
-//        middleFilter = new RGBFilter(context);
-//        middleFilter.init(asset0MP4, 0);
-//
-//        frontFilter = new RGBFilter(context);
-//        frontFilter.init(asset1MP4, 1);
+//        try {
+//            Thread.sleep(100);
+//        } catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
 
         backFilter = new BackVideoFilter(context);
         //注意这里，创建了一个SurfaceTexture
@@ -129,6 +127,7 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
 
         backFilter.onSurfaceCreated(width, height);
 //        middleFilter.onSurfaceCreated(width, height);
+//        frontFilter.onSurfaceCreated(width, height);
 
         /**
          * 视口（Viewport）就是最终渲染结果显示的目的地
@@ -137,22 +136,23 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
          * 应该有两个视口，一个是用户调试用的视口
          * 一个是最后合成渲染的视口，这个视口应该是前景或中景的分辨率大小
          */
-//        float videoRatio = (float)frontFilter.getYUVWidth(0)/frontFilter.getYUVHeight(0);
-//        disVPWidth = (int)((float)viewHeight*videoRatio);//视口宽度;
-//        disVPHeight = viewHeight;
-//        Log.i(TAG, "onSurfaceChanged: VPWidth:" + disVPWidth +" VPHeight:" + disVPHeight);
-//        disVPx = viewWidth/2- disVPWidth/2;
-//        disVPy = viewHeight/2- disVPHeight/2;
-//        GLES20.glViewport(disVPx, disVPy, disVPWidth, disVPHeight);
-//
-//        Log.i(TAG, "onSurfaceChanged: VPx: "+disVPx );
-//        Log.i(TAG, "onSurfaceChanged: VPy: "+disVPy );
-//        Log.i(TAG, "onSurfaceChanged: VPWidth: "+disVPWidth );
-//        Log.i(TAG, "onSurfaceChanged: VPHeight: "+disVPHeight );
+        float videoRatio = (float)540/960;
+        disVPWidth = (int)((float)viewHeight*videoRatio);//视口宽度;
+        disVPHeight = viewHeight;
+        Log.i(TAG, "onSurfaceChanged: VPWidth:" + disVPWidth +" VPHeight:" + disVPHeight);
+        disVPx = viewWidth/2- disVPWidth/2;
+        disVPy = viewHeight/2- disVPHeight/2;
+        GLES20.glViewport(disVPx, disVPy, disVPWidth, disVPHeight);
+
+        Log.i(TAG, "onSurfaceChanged: VPx: "+disVPx );
+        Log.i(TAG, "onSurfaceChanged: VPy: "+disVPy );
+        Log.i(TAG, "onSurfaceChanged: VPWidth: "+disVPWidth );
+        Log.i(TAG, "onSurfaceChanged: VPHeight: "+disVPHeight );
 
         fbo = FBO.newInstance().create(1920, 1080);
 
         //若是不改变Viewport大小视频视频， 那么最后编码的时候应该会导致黑边也会被录制下来
+        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     }
 
     int count = 0;
@@ -165,39 +165,37 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
             first = true;
             return;
         }
-
-        diff = System.currentTimeMillis() - lastTime;
-        if (diff < 66) {
-            mVideoSurfaceTexture.updateTexImage();
-            return;
-        }
-        Log.e(TAG, "onDrawFrame: diff " + diff);
-        lastTime = System.currentTimeMillis();
-
-//        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-//        GLES20.glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-//        GLES20.glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
-//        GLES20.glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
-        GLES20.glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+//        diff = System.currentTimeMillis() - lastTime;
+//        if (diff < 66) {
+//            mVideoSurfaceTexture.updateTexImage();
+//            return;
+//        }
+//        Log.e(TAG, "onDrawFrame: diff " + diff);
+//        lastTime = System.currentTimeMillis();
         GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT | GLES20.GL_COLOR_BUFFER_BIT);
 
         mVideoSurfaceTexture.updateTexImage();
-//        backFilter.onDrawFrame(backFilter.getTextureID());
+        backFilter.onDrawFrame(backFilter.getTextureID());
 
-//      fbo.bind();
-//        GLES20.glEnable(GLES20.GL_BLEND);
-//        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
-//        middleFilter.onDrawFrame();
-//        GLES20.glDisable(GLES20.GL_BLEND);
-//
-//    fbo.unbind();
-//       passThroughFilter.onDrawFrame(fbo.getFrameBufferTextureId());
-//
-//        GLES20.glEnable(GLES20.GL_BLEND);
-//        GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
-//        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
+        SimpleDateFormat format;
+        format=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss:SSS", Locale.getDefault());    //james.test
+        Log.i(TAG, "LoadFileListBackgroundTask start "+format.format(System.currentTimeMillis()));
+
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
+        middleFilter.onDrawFrame();
+        GLES20.glDisable(GLES20.GL_BLEND);
+        format=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss:SSS", Locale.getDefault());    //james.test
+        Log.i(TAG, "LoadFileListBackgroundTask start "+format.format(System.currentTimeMillis()));
+
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
         frontFilter.onDrawFrame();
-//        GLES20.glDisable(GLES20.GL_BLEND);
+        GLES20.glDisable(GLES20.GL_BLEND);
+        format=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss:SSS", Locale.getDefault());    //james.test
+        Log.i(TAG, "LoadFileListBackgroundTask start "+format.format(System.currentTimeMillis()));
+
+//       passThroughFilter.onDrawFrame(fbo.getFrameBufferTextureId());
 
         //        GLES20.glEnable(GLES20.GL_BLEND);
 //        GLES20.glBlendFunc(GLES20.GL_DST_COLOR, GLES20.GL_ZERO);
@@ -208,6 +206,8 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
 //        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
 //        middleImgFilter.onDrawFrame(middleImgFilter.getTextureID());
 //        GLES20.glDisable(GLES20.GL_BLEND);
+        //      fbo.bind();
+        //    fbo.unbind();
     }
 
     @Override

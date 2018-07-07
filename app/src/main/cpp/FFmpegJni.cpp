@@ -41,51 +41,50 @@ void setJNIEnv(JNIEnv* env, jobject obj) {
     //不能直接赋值(g_obj = obj)
     g_obj = env->NewGlobalRef(obj);
 }
-
+/**************************************************************************************************************************
+YUV转换
+/**************************************************************************************************************************/
 FILE *fp_yuv0 = NULL;
 FILE *fp_yuv1 = NULL;
 
 extern "C"
-JNIEXPORT jstring JNICALL
-Java_com_xmb_muldecodedemo_filter_YUVFilter_initdecoder(JNIEnv *env, jobject instance, jstring _path, jint _seqNumber) {
+JNIEXPORT jint JNICALL
+Java_com_xmb_muldecodedemo_filter_YUVFilter_initdecoder(JNIEnv *env, jobject instance,
+                                                        jstring path_, jint seqNumber) {
+    const char *path = env->GetStringUTFChars(path_, 0);
 
-    char *path =  jstring2string(env, _path);
-//    setJNIEnv(env, instance);
-    decoder[_seqNumber] = new Decoder();
-    decoder[_seqNumber]->start(path);
+    // TODO
+    LOGE("path = %s", path);
+    decoder[seqNumber] = new Decoder();
+    decoder[seqNumber]->start(path, seqNumber);
 
-    if (_seqNumber == 0) {
-        fp_yuv0 = fopen("/storage/emulated/0/outyuv0.yuv","wb+");
+//    if (seqNumber == 0) {
+//        fp_yuv0 = fopen("/storage/emulated/0/outyuv0.yuv","wb+");
+//
+//    } else if (seqNumber == 1) {
+//        fp_yuv1 = fopen("/storage/emulated/0/outyuv1.yuv","wb+");
+//    }
 
-    } else if (_seqNumber == 1) {
-        fp_yuv1 = fopen("/storage/emulated/0/outyuv1.yuv","wb+");
-    }
-
-    return env->NewStringUTF("ok");
+    env->ReleaseStringUTFChars(path_, path);
+    return 0;
 }
-
-int count=0;
 
 extern "C"
 JNIEXPORT jint JNICALL
 Java_com_xmb_muldecodedemo_filter_YUVFilter_updateData(JNIEnv *env, jobject instance,
-                                                       jbyteArray data_, jint _seqNumber) {
+                                                       jbyteArray data_, jint seqNumber) {
     jbyte *data = env->GetByteArrayElements(data_, JNI_FALSE);
     jint data_lenght = env->GetArrayLength(data_);;
 
     int ret = -1;
-    ret = decoder[_seqNumber]->decode((uint8_t *)data);
-
-    if (_seqNumber == 0) {
-        int size = decoder[_seqNumber]->getVideoWidth() * decoder[_seqNumber]->getVideoHeight() * 3 /2;
-        fwrite(data, 1, size, fp_yuv0);
-        sync();
-
-    } else if (_seqNumber == 1) {
-        int size = decoder[_seqNumber]->getVideoWidth() * decoder[_seqNumber]->getVideoHeight() * 3 /2;
-        fwrite(data, 1, size, fp_yuv1);
-        sync();
-    }
+    ret = decoder[seqNumber]->decode((uint8_t *)data);
+//    int size = decoder[seqNumber]->getVideoWidth() * decoder[seqNumber]->getVideoHeight() * 3 /2;
+//    if (seqNumber == 0) {
+//        fwrite(data, 1, size, fp_yuv0);
+//    } else if (seqNumber == 1) {
+//        fwrite(data, 1, size, fp_yuv1);
+//    }
+//    sync();
 
     env->ReleaseByteArrayElements(data_, data, 0);
 
@@ -94,78 +93,15 @@ Java_com_xmb_muldecodedemo_filter_YUVFilter_updateData(JNIEnv *env, jobject inst
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_xmb_muldecodedemo_filter_YUVFilter_getYUVWidth(JNIEnv *env, jobject instance, jint _seqNumber) {
-
-    // TODO
-    return decoder[_seqNumber]->getVideoWidth();
-}
-
-extern "C"
-JNIEXPORT jint JNICALL
-Java_com_xmb_muldecodedemo_filter_YUVFilter_getYUVHeight(JNIEnv *env, jobject instance, jint _seqNumber) {
-
-    // TODO
-    return decoder[_seqNumber]->getVideoHeight();
-}
-
-extern "C"
-JNIEXPORT jint JNICALL
-Java_com_xmb_muldecodedemo_filter_RGBFilter_updateData(JNIEnv *env, jobject instance,
-                                                       jbyteArray data_, jint _seqNumber) {
-    jbyte *data = env->GetByteArrayElements(data_, JNI_FALSE);
-
-    int ret = -1;
-    ret = decoder[_seqNumber]->decode((uint8_t *)data);
-    if (ret < 0) {
-        return ret;
-    }
-
-    if (_seqNumber == 0) {
-        int size = decoder[_seqNumber]->getVideoWidth() * decoder[_seqNumber]->getVideoHeight() * 3;
-        fwrite(data, 1, size, fp_yuv0);
-        sync();
-
-    } else if (_seqNumber == 1) {
-        int size = decoder[_seqNumber]->getVideoWidth() * decoder[_seqNumber]->getVideoHeight() * 3;
-        fwrite(data, 1, size, fp_yuv1);
-        sync();
-    }
-
-    env->ReleaseByteArrayElements(data_, data, 0);
-}extern "C"
-JNIEXPORT jstring JNICALL
-Java_com_xmb_muldecodedemo_filter_RGBFilter_initdecoder(JNIEnv *env, jobject instance,
-                                                        jstring path_, jint _seqNumber) {
-//    const char *path = env->GetStringUTFChars(path_, 0);
-    // TODO
-    char *path =  jstring2string(env, path_);
-//    setJNIEnv(env, instance);
-    decoder[_seqNumber] = new Decoder();
-    decoder[_seqNumber]->start(path);
-
-    if (_seqNumber == 0) {
-        fp_yuv0 = fopen("/storage/emulated/0/outyuv0.yuv","wb+");
-
-    } else if (_seqNumber == 1) {
-        fp_yuv1 = fopen("/storage/emulated/0/outyuv1.yuv","wb+");
-    }
-
-
-    env->ReleaseStringUTFChars(path_, path);
-
-    return env->NewStringUTF("ok");
-}extern "C"
-JNIEXPORT jint JNICALL
-Java_com_xmb_muldecodedemo_filter_RGBFilter_getYUVWidth(JNIEnv *env, jobject instance,
-                                                        jint seqNumber) {
+Java_com_xmb_muldecodedemo_filter_YUVFilter_getYUVWidth(JNIEnv *env, jobject instance, jint seqNumber) {
 
     // TODO
     return decoder[seqNumber]->getVideoWidth();
+}
 
-}extern "C"
+extern "C"
 JNIEXPORT jint JNICALL
-Java_com_xmb_muldecodedemo_filter_RGBFilter_getYUVHeight(JNIEnv *env, jobject instance,
-                                                         jint seqNumber) {
+Java_com_xmb_muldecodedemo_filter_YUVFilter_getYUVHeight(JNIEnv *env, jobject instance, jint seqNumber) {
 
     // TODO
     return decoder[seqNumber]->getVideoHeight();

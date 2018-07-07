@@ -121,10 +121,10 @@ public class YUVFilter extends AbsFilter{
 
         //更新YUV数据
         int ret = updateData(data, seqNumber);
-//        if (ret < 0) {
-//            Log.e(TAG, "onDrawFrame: ret = " + ret );
-//            return;
-//        }
+        if (ret < 0) {
+            Log.e(TAG, "onDrawFrame: ret = " + ret );
+            return;
+        }
 
         //更新纹理数据
         updateFrame(data);
@@ -199,10 +199,11 @@ public class YUVFilter extends AbsFilter{
      * @param seqNumber
      * @return
      */
-    public native String initdecoder(String path, int seqNumber);
+    public native int initdecoder(String path, int seqNumber);
 
     public native int updateData(byte[] data, int seqNumber);
 
     public native int getYUVWidth(int seqNumber);
     public native int getYUVHeight(int seqNumber);
+
 }

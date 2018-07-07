@@ -27,13 +27,13 @@ typedef struct PacketQueue {
     pthread_cond_t cond;
 } PacketQueue;
 
-class BlockingQueue {
+class MyPacketQueue {
 
 public:
     AVPacket flush_pkt;
 
-    BlockingQueue();
-    ~BlockingQueue();
+    MyPacketQueue();
+    ~MyPacketQueue();
 
     int packet_queue_put_private(PacketQueue *q, AVPacket *pkt);
     int packet_queue_put(PacketQueue *q, AVPacket *pkt);

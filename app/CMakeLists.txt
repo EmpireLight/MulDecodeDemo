@@ -12,7 +12,7 @@ include_directories(
 add_library( decoder
              SHARED
              src/main/cpp/decoder.cpp
-             src/main/cpp/BlockingQueue.cpp
+             src/main/cpp/Queue.cpp
              src/main/cpp/FFmpegJni.cpp)
 
 #创建动态库decoder,直接引用libdecoder.so
