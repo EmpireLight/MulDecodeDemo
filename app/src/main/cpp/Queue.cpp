@@ -6,6 +6,7 @@
 #include "Queue.h"
 #include "LogJni.h"
 
+
 MyPacketQueue::MyPacketQueue() {
 
     pthread_mutex_init(&mutex, NULL);
@@ -171,4 +172,29 @@ int MyPacketQueue::packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, in
     }
     pthread_mutex_unlock(&q->mutex);
     return ret;
+}
+
+int MyFrameQueue::frame_queue_init(queue<char *> *q) {
+    pthread_mutex_init(&mutex, NULL);
+    pthread_cond_init(&cond, NULL);
+}
+
+int MyFrameQueue::frame_queue_put(queue<char *> *q, char *data) {
+    pthread_mutex_lock(&mutex);
+    q->push(data);
+    pthread_cond_signal(&cond);
+    pthread_mutex_unlock(&mutex);
+}
+
+int MyFrameQueue::frame_queue_get(queue<char *> *q, char *data) {
+    pthread_mutex_lock(&mutex);
+
+    if (q->empty()) {
+        pthread_cond_wait(&cond, &mutex);
+    } else {
+        data = q->front();
+        q->pop();
+    }
+
+    pthread_mutex_unlock(&mutex);
 }

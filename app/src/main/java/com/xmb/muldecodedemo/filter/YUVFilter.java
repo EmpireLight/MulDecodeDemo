@@ -122,7 +122,7 @@ public class YUVFilter extends AbsFilter{
         //更新YUV数据
         int ret = updateData(data, seqNumber);
         if (ret < 0) {
-            Log.e(TAG, "onDrawFrame: ret = " + ret );
+            Log.e(TAG, "onDrawFrame: ret = " + ret + ", num = "+seqNumber);
             return;
         }
 

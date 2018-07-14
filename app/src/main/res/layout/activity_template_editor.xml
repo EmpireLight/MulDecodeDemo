@@ -6,7 +6,7 @@
     android:orientation="vertical">
 
     <View
-        android:id="@+id/main_topView"
+        android:id="@+id/template_editor_topView"
         android:layout_width="match_parent"
         android:layout_height="25dp" />
 
@@ -15,7 +15,7 @@
         android:layout_height="@dimen/title">
 
         <ImageView
-            android:id="@+id/main_back"
+            android:id="@+id/template_editor_back"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:layout_centerVertical="true"
@@ -25,7 +25,7 @@
             android:src="@drawable/jc_back_normal" />
 
         <TextView
-            android:id="@+id/main_next"
+            android:id="@+id/template_editor_next"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:layout_alignParentRight="true"
@@ -41,43 +41,16 @@
     </RelativeLayout>
 
     <RelativeLayout
-        android:id="@+id/main_img_layout"
+        android:id="@+id/template_editor_img_layout"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center">
 
-        <!--<com.xmb.muldecodedemo.VideoEditorView-->
-            <!--android:id="@+id/main_VideoEditorView"-->
-            <!--android:clickable="true"-->
-            <!--android:layout_width="match_parent"-->
-            <!--android:layout_height="match_parent" />-->
+        <SurfaceView
+            android:id="@+id/template_editor_SurfaceView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
 
     </RelativeLayout>
-    <!--<RelativeLayout-->
-        <!--android:id="@+id/img_layout"-->
-        <!--android:layout_width="match_parent"-->
-        <!--android:layout_height="0dp"-->
-        <!--android:layout_weight="1"-->
-        <!--android:gravity="center">-->
-
-        <!--<RelativeLayout-->
-            <!--android:id="@+id/addImgView"-->
-            <!--android:layout_width="match_parent"-->
-            <!--android:layout_height="match_parent" />-->
-    <!--</RelativeLayout>-->
-
-    <!--<view-->
-        <!--android:id="@+id/recyclerView"-->
-        <!--android:layout_width="match_parent"-->
-        <!--android:layout_height="120dp"-->
-        <!--android:background="#554C6E"-->
-        <!--android:scrollbars="none" />-->
-    <!--<android.support.v7.widget.RecyclerView-->
-        <!--android:id="@+id/recyclerView"-->
-        <!--android:layout_width="match_parent"-->
-        <!--android:layout_height="120dp"-->
-        <!--android:background="#554C6E"-->
-        <!--android:scrollbars="none" />-->
-
 </LinearLayout>

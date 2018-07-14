@@ -99,6 +99,14 @@ public abstract class AbsFilter {
         GLES20.glUniform1f(location,floatValue);
     }
 
+    public float[] getModelMatrix() {
+       return this.mModelMatrix;
+    }
+
+    public float[] getProjectMatrix() {
+        return this.mProjectMatrix;
+    }
+
     public void setMVPMatrix(float[] MVPMatrix) {
         this.mMVPMatrix = MVPMatrix;
     }

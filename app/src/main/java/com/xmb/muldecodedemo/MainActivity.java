@@ -1,6 +1,7 @@
 package com.xmb.muldecodedemo;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Environment;
 import android.support.v4.app.ActivityCompat;
@@ -9,14 +10,17 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 
-import com.xmb.muldecodedemo.utils.FileUtils;
 import com.xmb.muldecodedemo.utils.OutputImageFormat;
-import com.xmb.muldecodedemo.utils.VideoToFrames;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener, VideoToFrames.Callback{
+public class MainActivity extends AppCompatActivity implements View.OnClickListener{
     private static final String TAG = "MainActivity";
+
+    ImageView Img_back;
+    TextView Tex_next;
 
     VideoEditorView videoEditorView;
 
@@ -40,88 +44,32 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        findViewById(R.id.back).setOnClickListener(this);
-        findViewById(R.id.next).setOnClickListener(this);
-        videoEditorView = (VideoEditorView)findViewById(R.id.video_editor);
+        Img_back = (ImageView) findViewById(R.id.main_back);
+        Img_back.setOnClickListener(this);
+
+        Tex_next = (TextView) findViewById(R.id.main_next);
+        Tex_next.setOnClickListener(this);
+
+//        videoEditorView = (VideoEditorView) findViewById(R.id.main_VideoEditorView);
 
         checkPermission();
-
-        //video2jpeg();
-    }
-
-
-    private void video2jpeg() {
-
-        String inputFile = FileUtils.getSDPath() +"/" + "asset.mp4";
-        Log.d(TAG, "init: fileName = " + inputFile);
-
-        inputFile0 = FileUtils.getSDPath() +"/" + "asset0.mp4";
-        Log.d(TAG, "init: fileName = " + inputFile0);
-
-        inputFile1 = FileUtils.getSDPath() +"/" + "asset1.mp4";
-        Log.d(TAG, "init: fileName = " + inputFile1);
-
-        //设置jpeg文件目录名
-        outputDirasset0 = FileUtils.getSDPath() +"/" + "asset0";
-        outputDirasset1 = FileUtils.getSDPath() +"/" + "asset1";
-
-        //创建文件夹
-        FileUtils.createDir(outputDirasset0);
-        FileUtils.createDir(outputDirasset1);
-        Log.d(TAG, "init: Dir = " + outputDirasset0);
-        Log.d(TAG, "init: Dir = " + outputDirasset1);
-
-        //设置输出格式
-        outputImageFormat = OutputImageFormat.values()[2];
-        Log.d(TAG, "onCreate: outputImageFormat: " + outputImageFormat.toString());
-
-        VideoToFrames videoToFrames = new VideoToFrames();
-        videoToFrames.setCallback(this);
-        try {
-            videoToFrames.setSaveFrames(outputDirasset0, outputImageFormat);
-            //updateInfo("运行中...");
-            videoToFrames.decode(inputFile0);
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
     }
 
     @Override
     public void onClick(View v) {
         switch (v.getId()) {
-            case R.id.back:
+            case R.id.main_back:
                 Log.d(TAG, "onClick: back");
 
                 break;
-            case R.id.next:
+            case R.id.main_next:
+                Intent intent = new Intent();
+                intent.setClass(MainActivity.this, TemplateEditorActivity.class);
+                startActivity(intent);
+
                 Log.d(TAG, "onClick: next");
                 break;
         }
-    }
-
-    @Override
-    public void onFinishDecode() {
-        if (decodeFlag0 = true) {
-            VideoToFrames videoToFrames = new VideoToFrames();
-            try {
-                Log.e(TAG, "onFinishDecode: decodeFlag0: " + decodeFlag0 );
-                videoToFrames.setSaveFrames(outputDirasset1, outputImageFormat);
-                //videoToFrames.setCallback(this);
-                //updateInfo("运行中...");
-                videoToFrames.decode(inputFile1);
-            } catch (Throwable t) {
-                t.printStackTrace();
-            }
-        }
-
-        if (decodeFlag0 == false) {
-            decodeFlag0 = true;
-        }
-    }
-
-    @Override
-    public void onDecodeFrame(int index) {
-
     }
 
     /**检查权限*/

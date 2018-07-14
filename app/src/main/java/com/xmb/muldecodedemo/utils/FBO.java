@@ -56,7 +56,7 @@ public class FBO {
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
     }
 
-    public int getFrameBufferTextureId() {
+    public int getTextureId() {
         return frameBufferTexture;
     }
 

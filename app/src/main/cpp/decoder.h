@@ -5,9 +5,11 @@
 #ifndef MULDECODEDEMO_DECODER_H
 #define MULDECODEDEMO_DECODER_H
 
+#include <pthread.h>
+#include <unistd.h>
 #include "Queue.h"
 
-class Decoder {
+class Player {
 private:
     int width;
     int height;
@@ -15,8 +17,8 @@ private:
     int decoderNum;
 
 public:
-    Decoder();
-    ~Decoder();
+    Player();
+    ~Player();
 
     AVFormatContext * avFormatContext;
     AVCodecContext * avctxAudio;
@@ -33,6 +35,7 @@ public:
 
     int frame_count;
     MyPacketQueue *q;
+    MyFrameQueue *frameQueue;
 
     int abort_request;
     int paused;
@@ -43,8 +46,10 @@ public:
     int video_stream;
     AVStream *video_st;
     PacketQueue videoq;
+    queue<char *> videoFrameq;
     //int width, height, xleft, ytop;
     struct SwsContext *img_convert_ctx;
+    queue<char *> vFrameQueue;
 //Audio
     int audio_stream;
     AVStream *audio_st;

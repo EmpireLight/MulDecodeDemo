@@ -4,6 +4,7 @@ import android.content.Context;
 import android.opengl.GLES20;
 
 import com.xmb.muldecodedemo.R;
+import com.xmb.muldecodedemo.programs.BaseProgram;
 import com.xmb.muldecodedemo.programs.GLAbsProgram;
 import com.xmb.muldecodedemo.utils.OpenGlUtils;
 
@@ -13,13 +14,13 @@ import com.xmb.muldecodedemo.utils.OpenGlUtils;
  */
 
 public class PassThroughFilter extends AbsFilter {
-    protected GLAbsProgram glPassThroughProgram;
+    protected BaseProgram glPassThroughProgram;
 
     public boolean hasInit;
 
-    public PassThroughFilter(Context context) {
+    public PassThroughFilter() {
         super();
-        glPassThroughProgram = new GLAbsProgram(context, R.raw.base_vertex, R.raw.base_fragment );
+        glPassThroughProgram = new BaseProgram();
     }
 
     @Override

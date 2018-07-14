@@ -64,8 +64,8 @@ public class BackVideoFilter extends AbsFilter {
 //        //设置相机位置
 //        Matrix.setLookAtM(mViewMatrix, 0, 0, 0, 5.0f, 0f, 0f, 0f, 0f, 1.0f, 0.0f);
 //        //计算变换矩阵
-//        Matrix.multiplyMM(mMVPMatrix, 0, mProjectMatrix, 0, mViewMatrix,0);
-        super.setMVPMatrix(mProjectMatrix);
+        Matrix.multiplyMM(mMVPMatrix, 0, mProjectMatrix, 0, mModelMatrix,0);
+//        super.setMVPMatrix(mMVPMatrix); //mProjectMatrix
     }
 
     @Override

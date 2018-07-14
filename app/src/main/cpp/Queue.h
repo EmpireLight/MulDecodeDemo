@@ -8,7 +8,10 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include "FFmpegDEcode.h"
+#include "Queue.h"
+#include <queue>
 
+using namespace std;
 
 typedef struct MyAVPacketList {
     AVPacket pkt;
@@ -49,4 +52,17 @@ private:
     pthread_mutex_t mutex;
     pthread_cond_t cond;
 };
+
+class MyFrameQueue  {
+public:
+    int frame_queue_init(queue<char *> *q);
+    int frame_queue_put(queue<char *> *q, char *data);
+    int frame_queue_get(queue<char *> *q, char *data);
+    void frame_queue_put_flush(queue<char *> *q);
+
+private:
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+};
+
 #endif //MULDECODEDEMO_BLOCKINGQUEUE_H

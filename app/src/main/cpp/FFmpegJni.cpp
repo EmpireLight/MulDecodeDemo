@@ -5,13 +5,7 @@
 #include <unistd.h>
 #include "FFmpegJni.h"
 
-JavaVM *g_jvm = NULL;
-jobject g_obj = NULL;
-
-Decoder *decoder0 = NULL;
-Decoder *decoder1 = NULL;
-
-Decoder *decoder[2];
+Player *player[2];
 
 char* jstring2string(JNIEnv* env, jstring jstr)
 {
@@ -35,15 +29,9 @@ char* jstring2string(JNIEnv* env, jstring jstr)
     return rtn;
 }
 
-void setJNIEnv(JNIEnv* env, jobject obj) {
-    //保存全局JVM以便在子线程中使用
-    env->GetJavaVM(&g_jvm);
-    //不能直接赋值(g_obj = obj)
-    g_obj = env->NewGlobalRef(obj);
-}
 /**************************************************************************************************************************
 YUV转换
-/**************************************************************************************************************************/
+**************************************************************************************************************************/
 FILE *fp_yuv0 = NULL;
 FILE *fp_yuv1 = NULL;
 
@@ -55,8 +43,8 @@ Java_com_xmb_muldecodedemo_filter_YUVFilter_initdecoder(JNIEnv *env, jobject ins
 
     // TODO
     LOGE("path = %s", path);
-    decoder[seqNumber] = new Decoder();
-    decoder[seqNumber]->start(path, seqNumber);
+    player[seqNumber] = new Player();
+    player[seqNumber]->start(path, seqNumber);
 
 //    if (seqNumber == 0) {
 //        fp_yuv0 = fopen("/storage/emulated/0/outyuv0.yuv","wb+");
@@ -77,7 +65,7 @@ Java_com_xmb_muldecodedemo_filter_YUVFilter_updateData(JNIEnv *env, jobject inst
     jint data_lenght = env->GetArrayLength(data_);;
 
     int ret = -1;
-    ret = decoder[seqNumber]->decode((uint8_t *)data);
+    ret = player[seqNumber]->decode((uint8_t *)data);
 //    int size = decoder[seqNumber]->getVideoWidth() * decoder[seqNumber]->getVideoHeight() * 3 /2;
 //    if (seqNumber == 0) {
 //        fwrite(data, 1, size, fp_yuv0);
@@ -96,7 +84,7 @@ JNIEXPORT jint JNICALL
 Java_com_xmb_muldecodedemo_filter_YUVFilter_getYUVWidth(JNIEnv *env, jobject instance, jint seqNumber) {
 
     // TODO
-    return decoder[seqNumber]->getVideoWidth();
+    return player[seqNumber]->getVideoWidth();
 }
 
 extern "C"
@@ -104,5 +92,5 @@ JNIEXPORT jint JNICALL
 Java_com_xmb_muldecodedemo_filter_YUVFilter_getYUVHeight(JNIEnv *env, jobject instance, jint seqNumber) {
 
     // TODO
-    return decoder[seqNumber]->getVideoHeight();
+    return player[seqNumber]->getVideoHeight();
 }
