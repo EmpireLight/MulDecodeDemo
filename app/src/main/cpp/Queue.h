@@ -9,9 +9,6 @@
 #include <sys/types.h>
 #include "FFmpegDEcode.h"
 #include "Queue.h"
-#include <queue>
-
-using namespace std;
 
 typedef struct MyAVPacketList {
     AVPacket pkt;
@@ -47,22 +44,37 @@ public:
     void packet_queue_abort(PacketQueue *q);
     void packet_queue_start(PacketQueue *q);
     int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *serial);
+};
 
-private:
+
+typedef struct MyAVFrameList {
+    char* data;
+    struct MyAVFrameList *next;
+} MyFrameList;
+
+typedef struct FrameQueue {
+    MyAVFrameList *first_pkt, *last_pkt;
+    int nb_frames;
+    int size;
+    int abort_request;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-};
+} FrameQueue;
 
 class MyFrameQueue  {
 public:
-    int frame_queue_init(queue<char *> *q);
-    int frame_queue_put(queue<char *> *q, char *data);
-    int frame_queue_get(queue<char *> *q, char *data);
-    void frame_queue_put_flush(queue<char *> *q);
+    MyFrameQueue();
+    ~MyFrameQueue();
 
-private:
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
+    int frame_queue_put_private(FrameQueue *q, char *data);
+    int frame_queue_put(FrameQueue *q, char *data);
+    int frame_queue_get(FrameQueue *q, char *data, int block);
+    int frame_queue_init(FrameQueue *q);
+    void frame_queue_flush(FrameQueue *q);
+    void frame_queue_destroy(FrameQueue *q);
+    void frame_queue_abort(FrameQueue *q);
+    void frame_queue_start(FrameQueue *q);
+
 };
 
 #endif //MULDECODEDEMO_BLOCKINGQUEUE_H

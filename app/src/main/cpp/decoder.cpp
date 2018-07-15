@@ -38,7 +38,6 @@ void get_abstime_wait(long timeout_ms, struct timespec *abstime)
 
 Player::Player() {
     frame_count = 0;
-    eof = 0;
     width = -1;
     height = -1;
     duration = -1;
@@ -55,6 +54,10 @@ Player::Player() {
     avctxSubtitle = NULL;
 
     memset(st_index, -1, sizeof(st_index));
+    audio_stream = -1;
+    video_stream = -1;
+    subtitle_stream = -1;
+    eof = 0;
 
     //TODO 记得清除
     q = new MyPacketQueue();
@@ -282,17 +285,17 @@ int Player::init() {
 
 /* open the streams */
     if (st_index[AVMEDIA_TYPE_AUDIO] >= 0) {
-        LOGI("audio is exited, streamIndex: %d， seqNum = %d", st_index[AVMEDIA_TYPE_AUDIO], decoderNum);
+        LOGI("AUDIO streamIndex: %d， Num = %d", st_index[AVMEDIA_TYPE_AUDIO], decoderNum);
         stream_component_open(st_index[AVMEDIA_TYPE_AUDIO]) ;
     }
 
     if (st_index[AVMEDIA_TYPE_VIDEO] >= 0) {
-        LOGI("video is exited, streamIndex: %d, seqNum = %d", st_index[AVMEDIA_TYPE_VIDEO], decoderNum);
+        LOGI("VIDEO streamIndex: %d, Num = %d", st_index[AVMEDIA_TYPE_VIDEO], decoderNum);
         stream_component_open(st_index[AVMEDIA_TYPE_VIDEO]) ;
     }
 
     if (st_index[AVMEDIA_TYPE_SUBTITLE] >= 0) {
-        LOGI("subtile is exited, streamIndex: %d, seqNum = %d", st_index[AVMEDIA_TYPE_SUBTITLE], decoderNum);
+        LOGI("SUBTITLE streamIndex: %d, Num = %d", st_index[AVMEDIA_TYPE_SUBTITLE], decoderNum);
         stream_component_open(st_index[AVMEDIA_TYPE_SUBTITLE]) ;
     }
 
@@ -412,6 +415,9 @@ void Player::read() {
         ret = av_read_frame(avFormatContext, pkt);
         if (ret < 0) {
             LOGI("av_read_frame fail ret= %d \n", ret);
+            if (ret == AVERROR_EOF) {
+                LOGE("AVERROR_EOF , num = %d", decoderNum);
+            }
             if ((ret == AVERROR_EOF || avio_feof(avFormatContext->pb)) && !eof) {
                 LOGI("AVERROR_EOF");
                 if (video_stream >= 0)

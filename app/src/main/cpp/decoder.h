@@ -46,10 +46,10 @@ public:
     int video_stream;
     AVStream *video_st;
     PacketQueue videoq;
-    queue<char *> videoFrameq;
+    FrameQueue videoFrameq;
     //int width, height, xleft, ytop;
     struct SwsContext *img_convert_ctx;
-    queue<char *> vFrameQueue;
+    FrameQueue vFrameQueue;
 //Audio
     int audio_stream;
     AVStream *audio_st;

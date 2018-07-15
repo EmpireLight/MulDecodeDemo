@@ -6,20 +6,12 @@
 #include "Queue.h"
 #include "LogJni.h"
 
-
 MyPacketQueue::MyPacketQueue() {
-
-    pthread_mutex_init(&mutex, NULL);
-    pthread_cond_init(&cond, NULL);
-
     av_init_packet(&flush_pkt);
     flush_pkt.data = (uint8_t *)&flush_pkt;
 }
 
 MyPacketQueue::~MyPacketQueue() {
-//    flush();
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&cond);
 }
 
 int MyPacketQueue::packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
@@ -174,27 +166,130 @@ int MyPacketQueue::packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, in
     return ret;
 }
 
-int MyFrameQueue::frame_queue_init(queue<char *> *q) {
-    pthread_mutex_init(&mutex, NULL);
-    pthread_cond_init(&cond, NULL);
+
+MyFrameQueue::MyFrameQueue() {
 }
 
-int MyFrameQueue::frame_queue_put(queue<char *> *q, char *data) {
-    pthread_mutex_lock(&mutex);
-    q->push(data);
-    pthread_cond_signal(&cond);
-    pthread_mutex_unlock(&mutex);
+MyFrameQueue::~MyFrameQueue() {
 }
 
-int MyFrameQueue::frame_queue_get(queue<char *> *q, char *data) {
-    pthread_mutex_lock(&mutex);
+int MyFrameQueue::frame_queue_put_private(FrameQueue *q, char *data)
+{
+    MyAVFrameList *pkt1;
 
-    if (q->empty()) {
-        pthread_cond_wait(&cond, &mutex);
-    } else {
-        data = q->front();
-        q->pop();
+    if (q->abort_request)
+        return -1;
+
+    pkt1 = ( MyAVFrameList *)av_malloc(sizeof(MyAVFrameList));
+    if (!pkt1)
+        return -1;
+    pkt1->data = data;
+    pkt1->next = NULL;
+
+    if (!q->last_pkt)
+        q->first_pkt = pkt1;
+    else
+        q->last_pkt->next = pkt1;
+    q->last_pkt = pkt1;
+    q->nb_frames++;
+    LOGE("frame_queue_put_private nb_frames = %d", q->nb_frames);
+    /* XXX: should duplicate packet data in DV case */
+    pthread_cond_signal(&q->cond);
+    return 0;
+}
+
+int MyFrameQueue::frame_queue_init(FrameQueue *q) {
+    memset(q, 0, sizeof(FrameQueue));
+    pthread_mutex_init(&q->mutex, NULL);
+    pthread_cond_init(&q->cond, NULL);
+
+    q->abort_request = 1;
+}
+
+void MyFrameQueue::frame_queue_flush(FrameQueue *q)
+{
+    MyAVFrameList *pkt, *pkt1;
+
+    pthread_mutex_lock(&q->mutex);
+    for (pkt = q->first_pkt; pkt; pkt = pkt1) {
+        pkt1 = pkt->next;
+        free(pkt->data);
     }
+    q->last_pkt = NULL;
+    q->first_pkt = NULL;
+    q->nb_frames = 0;
+    q->size = 0;
+    pthread_mutex_unlock(&q->mutex);
+}
 
-    pthread_mutex_unlock(&mutex);
+void MyFrameQueue::frame_queue_destroy(FrameQueue *q)
+{
+    frame_queue_flush(q);
+
+    pthread_mutex_destroy(&q->mutex);
+    pthread_cond_destroy(&q->cond);
+}
+
+void MyFrameQueue::frame_queue_abort(FrameQueue *q)
+{
+    pthread_mutex_lock(&q->mutex);
+
+    q->abort_request = 1;
+
+    pthread_cond_signal(&q->cond);
+
+    pthread_mutex_unlock(&q->mutex);
+}
+
+void MyFrameQueue::frame_queue_start(FrameQueue *q)
+{
+    pthread_mutex_lock(&q->mutex);
+    q->abort_request = 0;
+//    frame_queue_put_private(q, NULL);
+    pthread_mutex_unlock(&q->mutex);
+}
+
+int MyFrameQueue::frame_queue_put(FrameQueue *q, char *data) {
+    int ret;
+
+    pthread_mutex_lock(&q->mutex);
+    ret = frame_queue_put_private(q, data);
+    pthread_mutex_unlock(&q->mutex);
+    return ret;
+}
+
+int MyFrameQueue::frame_queue_get(FrameQueue *q, char *data, int block) {
+    MyAVFrameList *pkt1;
+    int ret;
+
+    pthread_mutex_lock(&q->mutex);
+
+    for (;;) {
+        if (q->abort_request) {
+            ret = -1;
+            break;
+        }
+
+        pkt1 = q->first_pkt;
+        if (pkt1) {
+            q->first_pkt = pkt1->next;
+            if (!q->first_pkt)
+                q->last_pkt = NULL;
+            q->nb_frames--;
+            LOGE("packet_queue_get nb_packets = %d", q->nb_frames);
+            data = pkt1->data;
+            av_free(pkt1);
+            ret = 1;
+            break;
+        } else if (!block) {
+            ret = 0;
+            break;
+        } else {
+            LOGE("packet_queue_get nb_packets = %d pthread_cond_wait", q->nb_frames);
+            pthread_cond_wait(&q->cond, &q->mutex);
+        }
+    }
+    pthread_mutex_unlock(&q->mutex);
+
+    return ret;
 }
