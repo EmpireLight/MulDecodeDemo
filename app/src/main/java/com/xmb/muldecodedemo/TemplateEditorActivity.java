@@ -106,8 +106,8 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
         mDisplaySurface = new WindowSurface(mEglCore, holder.getSurface(), false);
         mDisplaySurface.makeCurrent();
 
-        middleFilter = new YUVFilter(this);
-        middleFilter.init(asset0MP4, 0);
+//        middleFilter = new YUVFilter(this);
+//        middleFilter.init(asset0MP4, 0);
 
         frontFilter = new YUVFilter(this);
         frontFilter.init(asset1MP4, 1);
@@ -164,7 +164,7 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
 //        GLES20.glViewport((int)viewportRect.left, (int)viewportRect.top, (int)viewportRect.width(), (int)viewportRect.height());
 //
         mVideoSurfaceTexture.updateTexImage();
-        backFilter.onDrawFrame(backFilter.getTextureID());
+//        backFilter.onDrawFrame(backFilter.getTextureID());
 
         if(touchFlag) {
             GLES20.glEnable(GLES20.GL_BLEND);
@@ -174,20 +174,20 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
         } else {
 //            long time = 0, lasttime = 0;
 //            lasttime = System.currentTimeMillis();
-
-            GLES20.glEnable(GLES20.GL_BLEND);
-            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
-            middleFilter.onDrawFrame();
-            GLES20.glDisable(GLES20.GL_BLEND);
-
+//
+//            GLES20.glEnable(GLES20.GL_BLEND);
+//            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
+//            middleFilter.onDrawFrame();
+//            GLES20.glDisable(GLES20.GL_BLEND);
+//
 //            time = System.currentTimeMillis();
 //            Log.i(TAG, "diff: "+ (time - lasttime));
 //            lasttime = time;
 
-            GLES20.glEnable(GLES20.GL_BLEND);
-            GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
+//            GLES20.glEnable(GLES20.GL_BLEND);
+//            GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
             frontFilter.onDrawFrame();
-            GLES20.glDisable(GLES20.GL_BLEND);
+//            GLES20.glDisable(GLES20.GL_BLEND);
 //            time = System.currentTimeMillis();
 //            Log.i(TAG, "diff: "+ (time - lasttime));
         }

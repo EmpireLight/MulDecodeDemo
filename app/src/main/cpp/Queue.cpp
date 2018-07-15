@@ -145,7 +145,7 @@ int MyPacketQueue::packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, in
             if (!q->first_pkt)
                 q->last_pkt = NULL;
             q->nb_packets--;
-            LOGE("packet_queue_get nb_packets = %d", q->nb_packets);
+//            LOGE("packet_queue_get nb_packets = %d", q->nb_packets);
             q->size -= pkt1->pkt.size + sizeof(*pkt1);
             q->duration -= pkt1->pkt.duration;
             *pkt = pkt1->pkt;
@@ -158,7 +158,7 @@ int MyPacketQueue::packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, in
             ret = 0;
             break;
         } else {
-            LOGE("packet_queue_get nb_packets = %d pthread_cond_wait", q->nb_packets);
+//            LOGE("packet_queue_get nb_packets = %d pthread_cond_wait", q->nb_packets);
             pthread_cond_wait(&q->cond, &q->mutex);
         }
     }
@@ -173,37 +173,13 @@ MyFrameQueue::MyFrameQueue() {
 MyFrameQueue::~MyFrameQueue() {
 }
 
-int MyFrameQueue::frame_queue_put_private(FrameQueue *q, char *data)
-{
-    MyAVFrameList *pkt1;
-
-    if (q->abort_request)
-        return -1;
-
-    pkt1 = ( MyAVFrameList *)av_malloc(sizeof(MyAVFrameList));
-    if (!pkt1)
-        return -1;
-    pkt1->data = data;
-    pkt1->next = NULL;
-
-    if (!q->last_pkt)
-        q->first_pkt = pkt1;
-    else
-        q->last_pkt->next = pkt1;
-    q->last_pkt = pkt1;
-    q->nb_frames++;
-    LOGE("frame_queue_put_private nb_frames = %d", q->nb_frames);
-    /* XXX: should duplicate packet data in DV case */
-    pthread_cond_signal(&q->cond);
-    return 0;
-}
-
 int MyFrameQueue::frame_queue_init(FrameQueue *q) {
     memset(q, 0, sizeof(FrameQueue));
     pthread_mutex_init(&q->mutex, NULL);
     pthread_cond_init(&q->cond, NULL);
 
-    q->abort_request = 1;
+    q->abort_request = 0;
+    return 0;
 }
 
 void MyFrameQueue::frame_queue_flush(FrameQueue *q)
@@ -241,24 +217,46 @@ void MyFrameQueue::frame_queue_abort(FrameQueue *q)
     pthread_mutex_unlock(&q->mutex);
 }
 
-void MyFrameQueue::frame_queue_start(FrameQueue *q)
+int MyFrameQueue::frame_queue_put_private(FrameQueue *q, char *data)
 {
-    pthread_mutex_lock(&q->mutex);
-    q->abort_request = 0;
-//    frame_queue_put_private(q, NULL);
-    pthread_mutex_unlock(&q->mutex);
+    MyAVFrameList *pkt1;
+
+    if (q->abort_request) {
+        LOGD("q->abort_request = %d", q->abort_request);
+        return -1;
+    }
+
+    pkt1 = ( MyAVFrameList *)av_malloc(sizeof(MyAVFrameList));
+    if (!pkt1) {
+        return -1;
+        LOGD("pkt1 = %d ", pkt1);
+    }
+
+    pkt1->data = data;
+    pkt1->next = NULL;
+
+    if (!q->last_pkt)
+        q->first_pkt = pkt1;
+    else
+        q->last_pkt->next = pkt1;
+    q->last_pkt = pkt1;
+    q->nb_frames++;
+//    LOGD("frame_queue_put_private nb_frames = %d", q->nb_frames);
+    /* XXX: should duplicate packet data in DV case */
+    pthread_cond_signal(&q->cond);
+    return 0;
 }
+
 
 int MyFrameQueue::frame_queue_put(FrameQueue *q, char *data) {
     int ret;
-
     pthread_mutex_lock(&q->mutex);
     ret = frame_queue_put_private(q, data);
     pthread_mutex_unlock(&q->mutex);
     return ret;
 }
 
-int MyFrameQueue::frame_queue_get(FrameQueue *q, char *data, int block) {
+int MyFrameQueue::frame_queue_get(FrameQueue *q, char **data, int block) {
     MyAVFrameList *pkt1;
     int ret;
 
@@ -276,8 +274,8 @@ int MyFrameQueue::frame_queue_get(FrameQueue *q, char *data, int block) {
             if (!q->first_pkt)
                 q->last_pkt = NULL;
             q->nb_frames--;
-            LOGE("packet_queue_get nb_packets = %d", q->nb_frames);
-            data = pkt1->data;
+//            LOGD("frame_queue_get nb_packets = %d", q->nb_frames);
+            *data = pkt1->data;
             av_free(pkt1);
             ret = 1;
             break;
@@ -285,7 +283,7 @@ int MyFrameQueue::frame_queue_get(FrameQueue *q, char *data, int block) {
             ret = 0;
             break;
         } else {
-            LOGE("packet_queue_get nb_packets = %d pthread_cond_wait", q->nb_frames);
+//            LOGD("frame_queue_get pthread_cond_wait", q->nb_frames);
             pthread_cond_wait(&q->cond, &q->mutex);
         }
     }

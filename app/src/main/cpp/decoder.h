@@ -54,6 +54,7 @@ public:
     int audio_stream;
     AVStream *audio_st;
     PacketQueue audioq;
+    FrameQueue audioFrameq;
     int audio_volume;
     int sample_rate;
     int channels;
@@ -76,7 +77,10 @@ public:
 
     void stream_component_close(int stream_index);
 
+    int display_video();
+
     static void* read_pth(void *arg);
+    static void* video_thread(void *arg);
 
     int getVideoWidth();
     int getVideoHeight();

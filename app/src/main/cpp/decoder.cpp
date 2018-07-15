@@ -61,8 +61,7 @@ Player::Player() {
 
     //TODO 记得清除
     q = new MyPacketQueue();
-//    frameQueue = new MyFrameQueue();
-//    frameQueue->frame_queue_init(&videoFrameq);
+    frameQueue = new MyFrameQueue();
 
     pthread_cond_init(&continue_read_thread, NULL);
 }
@@ -129,6 +128,87 @@ void Player::stream_component_close(int stream_index)
 }
 
 FILE *fp_yuv = NULL;
+
+int Player::display_video() {
+    int ret = -1;
+    AVPacket pkt;
+
+    pthread_mutex_t wait_mutex;
+    pthread_mutex_init(&wait_mutex, NULL);
+    for (;;) {
+
+        if (abort_request) {
+            LOGE("abort_request = %d, num = %d", abort_request, decoderNum);
+            break;
+        }
+
+        if (videoFrameq.nb_frames >= 10) {
+            LOGI("nb_frames >= 10, num = %d", decoderNum);
+            struct timespec abstime;
+            pthread_mutex_lock(&wait_mutex);
+            get_abstime_wait(100, &abstime);
+            pthread_cond_timedwait(&continue_read_thread, &wait_mutex, &abstime);
+            pthread_mutex_unlock(&wait_mutex);
+            continue;
+        }
+
+        do {
+//        LOGI("packet_queue_get start, num = %d", decoderNum);
+            ret = q->packet_queue_get(&videoq, &pkt, 1, NULL);
+            if (ret < 0) {
+                LOGI("decode ret = %d ", ret);
+                return -1;
+            }
+//        LOGI("packet_queue_get end, num = %d", decoderNum);
+            if (pkt.data == q->flush_pkt.data) {
+                avcodec_flush_buffers(avctxVideo);
+        }
+//        LOGI("Decoder::decode while in, num = %d", decoderNum);
+        } while(pkt.data == q->flush_pkt.data);
+
+//        LOGI("Decoder::decode while, num = %d", decoderNum);
+        if (pkt.stream_index == video_stream) {//解码videopacket
+            //YUV
+            ret = avcodec_send_packet(avctxVideo, &pkt);
+            if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+                LOGI("ret = %d", ret);
+                av_packet_unref(&pkt);
+                return -1;
+            }
+
+            ret = avcodec_receive_frame(avctxVideo, avFrame);
+            if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+                LOGI("ret = %d", ret);
+                av_packet_unref(&pkt);
+                return -1;
+            }
+
+            sws_scale(img_convert_ctx, (const uint8_t* const*)avFrame->data, avFrame->linesize, 0,
+                      avctxVideo->height, YUVFrame->data, YUVFrame->linesize);
+
+            char *tmp = (char *)calloc(1, yuvSize);
+            memcpy(tmp, YUVFrame->data[0], yFrameSize );
+            memcpy(tmp + yFrameSize, YUVFrame->data[1], uvFrameSize );
+            memcpy(tmp + yFrameSize + uvFrameSize, YUVFrame->data[2], uvFrameSize );
+            LOGI("Decoder::decode frame_queue_put");
+            ret = frameQueue->frame_queue_put(&videoFrameq, tmp);
+            LOGE("ret = %d", ret);
+//            int size;
+//            size = fwrite(tmp, 1, yuvSize, fp_yuv);
+//            LOGE("size = %d", size);
+        }
+//        LOGI("Decoder::decode av_packet_unref");
+        av_packet_unref(&pkt);
+    }
+
+    return ret;
+}
+
+void *Player::video_thread(void *arg) {
+    Player *ptr = (Player *)arg;
+
+    ptr->display_video();
+}
 
 int Player::stream_component_open(int stream_index) {
     AVCodecContext * avctx;
@@ -205,6 +285,12 @@ int Player::stream_component_open(int stream_index) {
             av_image_fill_arrays(YUVFrame->data, YUVFrame->linesize, frame_buffer_out, AV_PIX_FMT_YUV420P, width, height, 1);
             img_convert_ctx = sws_getContext(avctxVideo->width, avctxVideo->height, avctxVideo->pix_fmt,
                                              width, height, AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL);
+
+            // TODO 失败处理
+            pthread_t thr1;
+            if(pthread_create(&thr1, NULL, video_thread, (void *)this) != 0) {
+                LOGI("pthread_create initDecoder fail");
+            }
         }
 
             break;
@@ -239,6 +325,10 @@ int Player::init() {
         q->packet_queue_init(&subtitleq) < 0)
         LOGI("packet_queue_init FAIL");
 //        goto fail;
+
+    if (frameQueue->frame_queue_init(&videoFrameq) < 0 ||
+        frameQueue->frame_queue_init(&audioFrameq) < 0)
+        LOGI("frame_queue_init FAIL");
 
     //1.注册所有组件
     av_register_all();
@@ -302,92 +392,6 @@ int Player::init() {
     return 0;
 }
 
-//void Player::read() {
-//    init();
-//
-//    int ret = -1;
-//    AVPacket pkt1, *pkt = &pkt1;
-//
-//    pthread_mutex_t wait_mutex;
-//    pthread_mutex_init(&wait_mutex, NULL);
-//    LOGI("Decoder::read(), num = %d", decoderNum);
-//    for (;;) {
-//        if (abort_request) {
-//            LOGE("abort_request = %d, num = %d", abort_request, decoderNum);
-//            break;
-//        }
-//
-//        if (vFrameQueue.size() >= 10) {
-//            LOGI("nb_frames >= 10, num = %d", decoderNum);
-//            struct timespec abstime;
-//            pthread_mutex_lock(&wait_mutex);
-//            get_abstime_wait(100, &abstime);
-//            pthread_cond_timedwait(&continue_read_thread, &wait_mutex, &abstime);
-//            pthread_mutex_unlock(&wait_mutex);
-//            continue;
-//        }
-//
-//        ret = av_read_frame(avFormatContext, pkt);
-//        if (ret < 0) {
-//            LOGI("av_read_frame fail ret= %d \n", ret);
-//            if ((ret == AVERROR_EOF || avio_feof(avFormatContext->pb)) && !eof) {
-//                LOGI("AVERROR_EOF");
-//                if (video_stream >= 0)
-//                    q->packet_queue_put_nullpacket(&videoq, video_stream);
-//                if (audio_stream >= 0)
-//                    q->packet_queue_put_nullpacket(&audioq, audio_stream);
-//                if (subtitle_stream >= 0)
-//                    q->packet_queue_put_nullpacket(&subtitleq, subtitle_stream);
-//                eof = 1;
-//            }
-//            if (avFormatContext->pb && avFormatContext->pb->error) {
-//                break;
-//            }
-//            //TODO why lock
-//            struct timespec abstime;
-//            pthread_mutex_lock(&wait_mutex);
-//            get_abstime_wait(1000, &abstime);
-//            pthread_cond_timedwait(&continue_read_thread, &wait_mutex, &abstime);
-//            pthread_mutex_unlock(&wait_mutex);
-//            continue;
-//        } else {
-//            eof = 0;
-//        }
-//
-//        if (pkt->stream_index == audio_stream) {
-//            av_packet_unref(pkt);
-//        } else if (pkt->stream_index == video_stream
-//                   && !(video_st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
-//            ret = avcodec_send_packet(avctxVideo, pkt);
-//            if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-//                LOGI("ret = %d", ret);
-//            }
-//
-//            ret = avcodec_receive_frame(avctxVideo, avFrame);
-//            if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-//                LOGI("ret = %d", ret);
-//            }
-//            LOGI("stream_index");
-//            char *tmp = (char *)av_malloc(yuvSize);
-//
-//            sws_scale(img_convert_ctx, (const uint8_t* const*)avFrame->data, avFrame->linesize, 0,
-//              avctxVideo->height, YUVFrame->data, YUVFrame->linesize);
-//
-//            memcpy(tmp, YUVFrame->data[0], yFrameSize );
-//            memcpy(tmp + yFrameSize, YUVFrame->data[1], uvFrameSize );
-//            memcpy(tmp + yFrameSize + uvFrameSize, YUVFrame->data[2], uvFrameSize );
-//
-//            frameQueue->frame_queue_put(&videoFrameq, tmp);
-//
-//            av_packet_unref(pkt);
-//        } else if (pkt->stream_index == subtitle_stream) {
-//            av_packet_unref(pkt);
-//        } else {
-//            av_packet_unref(pkt);
-//        }
-//    }
-//}
-
 void Player::read() {
     init();
 
@@ -404,7 +408,7 @@ void Player::read() {
         }
 
         if (videoq.nb_packets >= 10) {
-            LOGI("nb_frames >= 10, num = %d", decoderNum);
+            LOGI("nb_packets >= 10, num = %d", decoderNum);
             struct timespec abstime;
             pthread_mutex_lock(&wait_mutex);
             get_abstime_wait(100, &abstime);
@@ -481,68 +485,70 @@ int Player::stop() {
     return 0;
 }
 
+//int Player::decode(uint8_t* data) {
+//    int ret = -1;
+//    AVPacket pkt;
+//
+//    do {
+////        LOGI("packet_queue_get start, num = %d", decoderNum);
+//        ret = q->packet_queue_get(&videoq, &pkt, 1, NULL);
+//        if (ret < 0) {
+//            LOGI("decode ret = %d ", ret);
+//            return -1;
+//        }
+////        LOGI("packet_queue_get end, num = %d", decoderNum);
+//        if (pkt.data == q->flush_pkt.data) {
+//            avcodec_flush_buffers(avctxVideo);
+//        }
+//        LOGI("Decoder::decode while in, num = %d", decoderNum);
+//    } while(pkt.data == q->flush_pkt.data);
+//
+////    LOGI("Decoder::decode while, num = %d", decoderNum);
+//    if (pkt.stream_index == video_stream) {//解码videopacket
+//        //YUV
+//        ret = avcodec_send_packet(avctxVideo, &pkt);
+//        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+//            LOGI("ret = %d", ret);
+//            av_packet_unref(&pkt);
+//            return -1;
+//        }
+//
+//        ret = avcodec_receive_frame(avctxVideo, avFrame);
+//        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+//            LOGI("ret = %d", ret);
+//            av_packet_unref(&pkt);
+//            return -1;
+//        }
+//
+//        sws_scale(img_convert_ctx, (const uint8_t* const*)avFrame->data, avFrame->linesize, 0,
+//                  avctxVideo->height, YUVFrame->data, YUVFrame->linesize);
+//
+//        memcpy(data, YUVFrame->data[0], yFrameSize );
+//        memcpy(data + yFrameSize, YUVFrame->data[1], uvFrameSize );
+//        memcpy(data + yFrameSize + uvFrameSize, YUVFrame->data[2], uvFrameSize );
+//
+////        fwrite(data, 1, yuvSize, fp_yuv);
+//    }
+////    LOGI("Decoder::decode av_packet_unref");
+//    av_packet_unref(&pkt);
+//
+//    return ret;
+//}
+
 int Player::decode(uint8_t* data) {
-    int ret = -1;
-    AVPacket pkt;
+    char *tmp = NULL;
 
     do {
-//        LOGI("packet_queue_get start, num = %d", decoderNum);
-        ret = q->packet_queue_get(&videoq, &pkt, 1, NULL);
-        if (ret < 0) {
-            LOGI("decode ret = %d ", ret);
-            return -1;
-        }
-//        LOGI("packet_queue_get end, num = %d", decoderNum);
-        if (pkt.data == q->flush_pkt.data) {
-            avcodec_flush_buffers(avctxVideo);
-        }
-        LOGI("Decoder::decode while in, num = %d", decoderNum);
-    } while(pkt.data == q->flush_pkt.data);
+        LOGD("frame_queue_get START");
+        frameQueue->frame_queue_get(&videoFrameq, &tmp, 1);
+        LOGD("frame_queue_get END");
+    } while (NULL == tmp);
 
-//    LOGI("Decoder::decode while, num = %d", decoderNum);
-    if (pkt.stream_index == video_stream) {//解码videopacket
-        //YUV
-        ret = avcodec_send_packet(avctxVideo, &pkt);
-        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-            LOGI("ret = %d", ret);
-            av_packet_unref(&pkt);
-            return -1;
-        }
-
-        ret = avcodec_receive_frame(avctxVideo, avFrame);
-        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-            LOGI("ret = %d", ret);
-            av_packet_unref(&pkt);
-            return -1;
-        }
-
-        sws_scale(img_convert_ctx, (const uint8_t* const*)avFrame->data, avFrame->linesize, 0,
-                  avctxVideo->height, YUVFrame->data, YUVFrame->linesize);
-
-        memcpy(data, YUVFrame->data[0], yFrameSize );
-        memcpy(data + yFrameSize, YUVFrame->data[1], uvFrameSize );
-        memcpy(data + yFrameSize + uvFrameSize, YUVFrame->data[2], uvFrameSize );
-
-//        fwrite(data, 1, yuvSize, fp_yuv);
-
-//        LOGI("frame_count = %d, num = %d", frame_count++, decoderNum);
-    }
-//    LOGI("Decoder::decode av_packet_unref");
-    av_packet_unref(&pkt);
-
-    return ret;
+    LOGD("memcpy");
+    memcpy(data, tmp, yuvSize );
+    free(tmp);
+    return 0;
 }
-
-//int Player::decode(uint8_t* data) {
-//    char *tmp = NULL;
-//
-//    frameQueue->frame_queue_get(&videoFrameq, tmp);
-//
-//    memcpy(data, tmp, yFrameSize );
-//    memcpy(data + yFrameSize, tmp + yFrameSize, uvFrameSize );
-//    memcpy(data + yFrameSize + uvFrameSize, tmp + yFrameSize + uvFrameSize, uvFrameSize );
-//    av_free(tmp);
-//}
 
 int Player::getVideoWidth() {
     return this->width;

@@ -68,13 +68,11 @@ public:
 
     int frame_queue_put_private(FrameQueue *q, char *data);
     int frame_queue_put(FrameQueue *q, char *data);
-    int frame_queue_get(FrameQueue *q, char *data, int block);
+    int frame_queue_get(FrameQueue *q, char **data, int block);
     int frame_queue_init(FrameQueue *q);
     void frame_queue_flush(FrameQueue *q);
     void frame_queue_destroy(FrameQueue *q);
     void frame_queue_abort(FrameQueue *q);
-    void frame_queue_start(FrameQueue *q);
-
 };
 
 #endif //MULDECODEDEMO_BLOCKINGQUEUE_H
