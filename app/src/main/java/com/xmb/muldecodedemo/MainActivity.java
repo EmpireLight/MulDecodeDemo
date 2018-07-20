@@ -11,10 +11,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
-import android.widget.RelativeLayout;
 import android.widget.TextView;
-
-import com.xmb.muldecodedemo.utils.OutputImageFormat;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener{
     private static final String TAG = "MainActivity";
@@ -28,16 +25,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     static {
         System.loadLibrary("decoder");
     }
-
-    private boolean decodeFlag0 = false;
-    private boolean decodeFlag1 = false;
-    OutputImageFormat outputImageFormat;
-    String inputFile0;
-    String inputFile1;
-    String outputDirasset0;
-    String outputDirasset1;
-
-    RelativeLayout rootLayout;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,7 +51,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 break;
             case R.id.main_next:
                 Intent intent = new Intent();
-                intent.setClass(MainActivity.this, TemplateEditorActivity.class);
+                intent.setClass(MainActivity.this, TemplateComposeActivity.class);
                 startActivity(intent);
 
                 Log.d(TAG, "onClick: next");

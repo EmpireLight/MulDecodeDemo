@@ -19,7 +19,8 @@ public class PassThroughFilter extends AbsFilter {
     public boolean hasInit;
 
     public PassThroughFilter() {
-        super();
+        super(true);
+//        super();
         glPassThroughProgram = new BaseProgram();
     }
 

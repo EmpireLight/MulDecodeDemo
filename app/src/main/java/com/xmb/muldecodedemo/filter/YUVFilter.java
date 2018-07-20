@@ -25,7 +25,7 @@ public class YUVFilter extends AbsFilter{
 
     protected GLAbsProgram glPassThroughProgram;
 
-    int seqNumber = -1;//解码器序号（很重要）
+    private int seqNumber = -1;//解码器序号（很重要）
     public byte[] data;
 
     private int[] textures=new int[3];
@@ -71,7 +71,7 @@ public class YUVFilter extends AbsFilter{
 
     public void init(final String filePath, int seqNumber) {
         this.seqNumber = seqNumber;
-        initdecoder(filePath, seqNumber);
+        initDecoder(filePath);
         hasInit = true;
     }
 
@@ -88,7 +88,7 @@ public class YUVFilter extends AbsFilter{
         /**用户所选视频以视口宽高为基准算矩阵*/
         //设置透视投影
         float screenRatio=(float) width / height;
-        float videoRatio=(float) getYUVWidth(seqNumber) / getYUVHeight(seqNumber);
+        float videoRatio=(float) getYUVWidth() / getYUVHeight();
         if (videoRatio>screenRatio){
             Matrix.orthoM(mProjectMatrix,0,-1f,1f,-videoRatio/screenRatio,videoRatio/screenRatio,-1f,1f);
         }else {
@@ -97,33 +97,34 @@ public class YUVFilter extends AbsFilter{
 //        //设置相机位置
 //        Matrix.setLookAtM(mViewMatrix, 0, 0, 0, 5.0f, 0f, 0f, 0f, 0f, 1.0f, 0.0f);
 //        //计算变换矩阵
-//        Matrix.multiplyMM(mMVPMatrix, 0, mProjectMatrix, 0, mViewMatrix,0);
-        super.setMVPMatrix(mProjectMatrix);
+        Matrix.multiplyMM(mMVPMatrix, 0, mMVPMatrix, 0, mProjectMatrix,0);
     }
 
     @Override
     public void onDrawFrame(int textureId) {
     }
 
-    public void onDrawFrame() {
+    public void onDrawFrame(boolean updata) {
         glPassThroughProgram.use();
 
         if ((data == null) || (data.length != YUVsize)) {
-            YUVwidth = getYUVWidth(seqNumber);
-            YUVheight = getYUVHeight(seqNumber);
+            YUVwidth = getYUVWidth();
+            YUVheight = getYUVHeight();
             YUVsize = YUVwidth * YUVheight * 3 / 2;
-            Log.e(TAG, "init: YUVwidth = " + YUVwidth);
-            Log.e(TAG, "init: YUVheight = " + YUVheight);
+            Log.d(TAG, "init: YUVwidth = " + YUVwidth);
+            Log.d(TAG, "init: YUVheight = " + YUVheight);
 
             data = new byte[YUVsize];
-            Log.e(TAG, "onDrawFrame: yuvFilter.data.length = " + this.data.length);
+            Log.d(TAG, "onDrawFrame: yuvFilter.data.length = " + this.data.length);
         }
 
-        //更新YUV数据
-        int ret = updateData(data, seqNumber);
-        if (ret < 0) {
-            Log.e(TAG, "onDrawFrame: ret = " + ret + ", num = "+seqNumber);
-            return;
+        if (updata) {
+            //更新YUV数据
+            int ret = updataData(data);
+            if (ret < 0) {
+                Log.e(TAG, "onDrawFrame: ret = " + ret + ", num = "+seqNumber);
+                return;
+            }
         }
 
         //更新纹理数据
@@ -173,10 +174,6 @@ public class YUVFilter extends AbsFilter{
         u.position(0);
         v.position(0);
 
-//        Log.e(TAG, "updateFrame: YUVwidth*YUVheight = " + YUVwidth*YUVheight);
-//        Log.e(TAG, "updateFrame: YUVwidth*YUVheight>>2 = " + (YUVwidth*YUVheight+(YUVwidth*YUVheight>>2)));
-//        Log.e(TAG, "updateFrame: YUVwidth*YUVheight+(YUVwidth*YUVheight>>2) = " + (YUVwidth*YUVheight+(YUVwidth*YUVheight>>2) + (YUVwidth*YUVheight>>2)));
-
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,textures[0]);
         GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_LUMINANCE,YUVwidth,YUVheight,0,
                 GLES20.GL_LUMINANCE, GLES20.GL_UNSIGNED_BYTE, y);
@@ -193,17 +190,69 @@ public class YUVFilter extends AbsFilter{
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
     }
 
+    public int getSeqNumber() {
+        return this.seqNumber;
+    }
+
+
+
+    public int updataData(byte[] data) {
+        return updataData(data, seqNumber);
+    }
+
+    public int initDecoder(String path) {
+        return initDecoder(path, seqNumber);
+    };
+
+    public int getCurTime(){
+        return getCurTime(seqNumber);
+    }
+
+    public int getDuration() {
+        return getDuration(seqNumber);
+    }
+
+    public int getVideoWidth() {
+        return getVideoWidth(seqNumber);
+    };
+
+    public int getVideoHeight() {
+        return getVideoHeight(seqNumber);
+    };
+
+    private int getYUVWidth() {
+        return getYUVWidth(seqNumber);
+    };
+
+    private int getYUVHeight() {
+        return getYUVHeight(seqNumber);
+    };
+
+    public boolean isEnd() {
+        return isEnd(seqNumber);
+    };
+
+    public void stop() {
+        stop(seqNumber);
+    };
     /**
      * 第一个参数为文件路径，第二参数为解码器的序号
      * @param path
      * @param seqNumber
      * @return
      */
-    public native int initdecoder(String path, int seqNumber);
+    private native int initDecoder(String path, int seqNumber);
+    private native int destroyDecoder();
+    private native int updataData(byte[] data, int seqNumber);
 
-    public native int updateData(byte[] data, int seqNumber);
+    private native int getCurTime(int seqNumber);
+    private native int getDuration(int seqNumber);
 
-    public native int getYUVWidth(int seqNumber);
-    public native int getYUVHeight(int seqNumber);
+    private native int getVideoWidth(int seqNumber);
+    private native int getVideoHeight(int seqNumber);
+    private native int getYUVWidth(int seqNumber);
+    private native int getYUVHeight(int seqNumber);
 
+    private native boolean isEnd(int seqNumber);
+    private native void stop(int seqNumber);
 }

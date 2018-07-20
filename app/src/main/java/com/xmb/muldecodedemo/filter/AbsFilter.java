@@ -4,6 +4,7 @@ import android.opengl.GLES20;
 
 import com.xmb.muldecodedemo.utils.FBO;
 import com.xmb.muldecodedemo.utils.MatrixUtils;
+import com.xmb.muldecodedemo.utils.Rotation;
 import com.xmb.muldecodedemo.utils.TextureRotationUtil;
 
 import java.nio.ByteBuffer;
@@ -47,8 +48,35 @@ public abstract class AbsFilter {
                 .order(ByteOrder.nativeOrder())
                 .asFloatBuffer();
         mTexBuffer.put(TextureRotationUtil.TEXTURE_NO_ROTATION).position(0);
-        /**默认将s纹理Y轴翻转*/
+//        /**默认将s纹理Y轴翻转*/
 //        mTexBuffer.put(TextureRotationUtil.getRotation(Rotation.NORMAL, false, true)).position(0);
+
+        /**默认4*4单位矩阵*/
+        mMVPMatrix = MatrixUtils.getOriginalMatrix();
+        mModelMatrix =  MatrixUtils.getOriginalMatrix();
+        mProjectMatrix =  MatrixUtils.getOriginalMatrix();
+    }
+
+    public AbsFilter(boolean Yflip) {
+        mPreDrawTaskList = new LinkedList<Runnable>();
+
+        /**顶点坐标Buffer初始化*/
+        mVerBuffer = ByteBuffer.allocateDirect(TextureRotationUtil.CUBE.length * 4)
+                .order(ByteOrder.nativeOrder())
+                .asFloatBuffer();
+        mVerBuffer.put(TextureRotationUtil.CUBE).position(0);
+
+        /**纹理坐标Buffer初始化*/
+        mTexBuffer = ByteBuffer.allocateDirect(TextureRotationUtil.TEXTURE_NO_ROTATION.length * 4)
+                .order(ByteOrder.nativeOrder())
+                .asFloatBuffer();
+
+        if (Yflip) {
+            /**将s纹理Y轴翻转*/
+            mTexBuffer.put(TextureRotationUtil.getRotation(Rotation.NORMAL, false, true)).position(0);
+        } else {
+            mTexBuffer.put(TextureRotationUtil.TEXTURE_NO_ROTATION).position(0);
+        }
 
         /**默认4*4单位矩阵*/
         mMVPMatrix = MatrixUtils.getOriginalMatrix();

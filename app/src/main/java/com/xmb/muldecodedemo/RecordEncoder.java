@@ -31,14 +31,17 @@ public class RecordEncoder implements Runnable {
      */
     public static class EncoderConfig {
         final File mOutputFile;
+        final String mAudioFile;
         final int mWidth;
         final int mHeight;
         final int mBitRate;
         final EGLContext mEglContext;
         final Context mContext;
-        public EncoderConfig(File outputFile, int width, int height, int bitRate,
+        public EncoderConfig(File outputFile, String audioFile,
+                             int width, int height, int bitRate,
                              EGLContext sharedEglContext,Context context) {
             mOutputFile = outputFile;
+            mAudioFile = audioFile;
             mWidth = width;
             mHeight = height;
             mBitRate = bitRate;
@@ -201,7 +204,7 @@ public class RecordEncoder implements Runnable {
 
     // ---------------以下部分代码 仅由编码器线程访问 ---------------------------------------------------------------------
     private int mFrameTextureId;
-    private RecordEncoderCore mRecordEncoder;
+    private RecordEncoderCore mRecordVideoEncoder;
     private EglCore mEglCore;
     private WindowSurface mRecorderInputSurface;
     private EncoderConfig mConfig;
@@ -212,15 +215,15 @@ public class RecordEncoder implements Runnable {
     private void handleStartRecording(EncoderConfig config) {
         Log.d(TAG, "handleStartRecording " + config);
         try {
-            mRecordEncoder = new RecordEncoderCore(config.mWidth, config.mHeight,
-                    config.mBitRate, config.mOutputFile);
+            mRecordVideoEncoder = new RecordEncoderCore(config.mWidth, config.mHeight, config.mBitRate,
+                    config.mOutputFile, config.mAudioFile);
             mConfig = config;
-//            mSignTexId = TextureHelper.loadTexture(config.mContext, R.mipmap.name);水印
+
         } catch (IOException ioe) {
             throw new RuntimeException(ioe);
         }
         mEglCore = new EglCore(config.mEglContext, EglCore.FLAG_RECORDABLE);
-        mRecorderInputSurface = new WindowSurface(mEglCore, mRecordEncoder.getInputSurface(), true);
+        mRecorderInputSurface = new WindowSurface(mEglCore, mRecordVideoEncoder.getInputSurface(), true);
         mRecorderInputSurface.makeCurrent();
 
         mFBOFrameRect = new PassThroughFilter();
@@ -230,12 +233,12 @@ public class RecordEncoder implements Runnable {
     // Handles a request to stop encoding.
     private void handleStopRecording() {
         Log.d(TAG, "handleStopRecording");
-        mRecordEncoder.drainEncoder(true);
+        mRecordVideoEncoder.drainEncoder(true);
         releaseEncoder();
     }
 
     private void releaseEncoder() {
-        mRecordEncoder.release();
+        mRecordVideoEncoder.release();
         if (mRecorderInputSurface != null) {
             mRecorderInputSurface.release();
             mRecorderInputSurface = null;
@@ -253,7 +256,7 @@ public class RecordEncoder implements Runnable {
 
     private void handleFrameAvailable(float[] transform, long timestampNanos) {
         //先推动一次编码器工作，把编码后的数据写入Muxer
-        mRecordEncoder.drainEncoder(false);
+        mRecordVideoEncoder.drainEncoder(false);
 
         mRecorderInputSurface.makeCurrent();
         GLES20.glClear( GLES20.GL_DEPTH_BUFFER_BIT | GLES20.GL_COLOR_BUFFER_BIT);

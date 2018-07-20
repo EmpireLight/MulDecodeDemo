@@ -22,7 +22,7 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".TemplateEditorActivity"/>
+        <activity android:name=".TemplateComposeActivity"/>
 
     </application>
 

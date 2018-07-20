@@ -36,7 +36,7 @@ int MyPacketQueue::packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
         q->last_pkt->next = pkt1;
     q->last_pkt = pkt1;
     q->nb_packets++;
-//    LOGE("packet_queue_put_private nb_packets = %d", q->nb_packets);
+//    LOGD("packet_queue_put_private nb_packets = %d", q->nb_packets);
     q->size += pkt1->pkt.size + sizeof(*pkt1);
     q->duration += pkt1->pkt.duration;
     /* XXX: should duplicate packet data in DV case */
@@ -100,7 +100,6 @@ void MyPacketQueue::packet_queue_flush(PacketQueue *q)
 void MyPacketQueue::packet_queue_destroy(PacketQueue *q)
 {
     packet_queue_flush(q);
-
     pthread_mutex_destroy(&q->mutex);
     pthread_cond_destroy(&q->cond);
 }
@@ -108,11 +107,8 @@ void MyPacketQueue::packet_queue_destroy(PacketQueue *q)
 void MyPacketQueue::packet_queue_abort(PacketQueue *q)
 {
     pthread_mutex_lock(&q->mutex);
-
     q->abort_request = 1;
-
     pthread_cond_signal(&q->cond);
-
     pthread_mutex_unlock(&q->mutex);
 }
 
@@ -145,7 +141,7 @@ int MyPacketQueue::packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, in
             if (!q->first_pkt)
                 q->last_pkt = NULL;
             q->nb_packets--;
-//            LOGE("packet_queue_get nb_packets = %d", q->nb_packets);
+//            LOGD("packet_queue_get nb_packets = %d", q->nb_packets);
             q->size -= pkt1->pkt.size + sizeof(*pkt1);
             q->duration -= pkt1->pkt.duration;
             *pkt = pkt1->pkt;
@@ -201,7 +197,6 @@ void MyFrameQueue::frame_queue_flush(FrameQueue *q)
 void MyFrameQueue::frame_queue_destroy(FrameQueue *q)
 {
     frame_queue_flush(q);
-
     pthread_mutex_destroy(&q->mutex);
     pthread_cond_destroy(&q->cond);
 }
@@ -209,11 +204,8 @@ void MyFrameQueue::frame_queue_destroy(FrameQueue *q)
 void MyFrameQueue::frame_queue_abort(FrameQueue *q)
 {
     pthread_mutex_lock(&q->mutex);
-
     q->abort_request = 1;
-
     pthread_cond_signal(&q->cond);
-
     pthread_mutex_unlock(&q->mutex);
 }
 
@@ -222,14 +214,14 @@ int MyFrameQueue::frame_queue_put_private(FrameQueue *q, char *data)
     MyAVFrameList *pkt1;
 
     if (q->abort_request) {
-        LOGD("q->abort_request = %d", q->abort_request);
+        LOGE("q->abort_request = %d", q->abort_request);
         return -1;
     }
 
     pkt1 = ( MyAVFrameList *)av_malloc(sizeof(MyAVFrameList));
     if (!pkt1) {
+        LOGE("pkt1 = %d ", pkt1);
         return -1;
-        LOGD("pkt1 = %d ", pkt1);
     }
 
     pkt1->data = data;
@@ -241,7 +233,7 @@ int MyFrameQueue::frame_queue_put_private(FrameQueue *q, char *data)
         q->last_pkt->next = pkt1;
     q->last_pkt = pkt1;
     q->nb_frames++;
-//    LOGD("frame_queue_put_private nb_frames = %d", q->nb_frames);
+//    LOGE("frame_queue_put_private nb_frames = %d", q->nb_frames);
     /* XXX: should duplicate packet data in DV case */
     pthread_cond_signal(&q->cond);
     return 0;
@@ -283,7 +275,6 @@ int MyFrameQueue::frame_queue_get(FrameQueue *q, char **data, int block) {
             ret = 0;
             break;
         } else {
-//            LOGD("frame_queue_get pthread_cond_wait", q->nb_frames);
             pthread_cond_wait(&q->cond, &q->mutex);
         }
     }

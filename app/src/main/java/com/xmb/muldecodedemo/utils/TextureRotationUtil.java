@@ -19,10 +19,10 @@ package com.xmb.muldecodedemo.utils;
 public class TextureRotationUtil {
 
     public static final float TEXTURE_NO_ROTATION[] = {
-            0.0f, 1.0f,
-            1.0f, 1.0f,
-            0.0f, 0.0f,
-            1.0f, 0.0f,
+            0.0f, 1.0f,// 0 top left
+            1.0f, 1.0f,// 1 top right
+            0.0f, 0.0f,// 2 bottom left
+            1.0f, 0.0f,// 3 bottom right
     };
 
     public static final float TEXTURE_ROTATED_90[] = {
@@ -45,10 +45,10 @@ public class TextureRotationUtil {
     };
     
     public static final float CUBE[] = {
-        -1.0f, -1.0f,
-        1.0f, -1.0f,
-        -1.0f, 1.0f,
-        1.0f, 1.0f,
+        -1.0f, -1.0f,// 0 bottom left
+        1.0f, -1.0f,// 1 bottom right
+        -1.0f, 1.0f,// 2 top left
+        1.0f, 1.0f,// 3 top right
 	};
     
     private TextureRotationUtil() {}

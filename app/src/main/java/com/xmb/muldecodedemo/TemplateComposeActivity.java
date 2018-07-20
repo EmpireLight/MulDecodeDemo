@@ -2,7 +2,7 @@ package com.xmb.muldecodedemo;
 
 import android.app.Activity;
 
-import android.graphics.RectF;
+import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.opengl.EGL14;
 import android.opengl.GLES20;
@@ -20,6 +20,7 @@ import android.view.View;
 
 import com.xmb.muldecodedemo.egl.EglCore;
 import com.xmb.muldecodedemo.egl.WindowSurface;
+import com.xmb.muldecodedemo.filter.AbsFilter;
 import com.xmb.muldecodedemo.filter.BackVideoFilter;
 import com.xmb.muldecodedemo.filter.PassThroughFilter;
 import com.xmb.muldecodedemo.filter.YUVFilter;
@@ -33,15 +34,16 @@ import java.lang.ref.WeakReference;
  * Created by Administrator on 2018/7/11 0011.
  */
 
-public class TemplateEditorActivity extends Activity implements SurfaceHolder.Callback,
+public class TemplateComposeActivity extends Activity implements SurfaceHolder.Callback,
         View.OnClickListener{
-    private final static String TAG = "TemplateEditorActivity";
+    private final static String TAG = "TemplateComposeActivity";
 
-    String DirAsset0 = FileUtils.getSDPath() + "/" + "asset0";
-    String DirAsset1 = FileUtils.getSDPath() + "/" + "asset1";
+//    String DirAsset0 = FileUtils.getSDPath() + "/" + "asset0";
+//    String DirAsset1 = FileUtils.getSDPath() + "/" + "asset1";
     String asset0MP4 = FileUtils.getSDPath() + "/" + "asset0.mp4";
     String asset1MP4 = FileUtils.getSDPath() + "/" + "asset1.mp4";
     String assetMP4 = FileUtils.getSDPath() + "/" + "asset.mp4";
+    String musicMP3 =  FileUtils.getSDPath() + "/" + "music.mp3";
 
     SurfaceView sv;
     private EglCore mEglCore;
@@ -57,7 +59,7 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
     private float mLastX = 0;
     private float mLastY = 0;
     // 记录视口的坐标
-    private RectF viewportRect;
+    private Rect viewportRect;
     //显示视口参数
     private int disVPx, disVPy;
     private int disVPWidth, disVPHeight;
@@ -65,17 +67,21 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
     private boolean touchFlag;
 
     MainHandler mHandler;
+    //判断Viewport是否初始化
+    private boolean isViewportInit = false;
 
     private File outputFile;
+    private File audioFile;
     private volatile boolean mRequestRecord;
     private RecordEncoder mRecordEncoder;
     private boolean recording;
 
-    private static final int VIDEO_WIDTH = 540;
-    private static final int VIDEO_HEIGHT = 960;    // 540 960
+    public FBO fbo = null;
 
-    public FBO fbo;
-
+    String asset0Video;//模板视频0（黑白），用作middleFilter中景纹理
+    String asset1Video;//模板视频1（素材），用作frontFilter中景纹理
+    String userSelVideo;//用户所选视频
+    String musicAudio;//模板自带音频
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -90,6 +96,11 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
         sv.setFocusable(true);
 
         mHandler = new MainHandler(this);
+
+        asset0Video = asset0MP4;
+        asset1Video = asset1MP4;
+        userSelVideo = assetMP4;
+        musicAudio = musicMP3;
     }
 
     @Override
@@ -99,122 +110,170 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
 
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        Log.d(TAG, "surfaceCreated holder = " + holder);
         // 准备好EGL环境，创建渲染介质mDisplaySurface
         mEglCore = new EglCore(null, EglCore.FLAG_RECORDABLE);
 
         mDisplaySurface = new WindowSurface(mEglCore, holder.getSurface(), false);
         mDisplaySurface.makeCurrent();
 
-//        middleFilter = new YUVFilter(this);
-//        middleFilter.init(asset0MP4, 0);
+        middleFilter = new YUVFilter(this);
+        middleFilter.init(asset0Video, 0);
 
         frontFilter = new YUVFilter(this);
-        frontFilter.init(asset1MP4, 1);
+        frontFilter.init(asset1Video, 1);
 
         backFilter = new BackVideoFilter(this);
         //注意这里，创建了一个SurfaceTexture
-        mVideoSurfaceTexture = new SurfaceTexture(backFilter.getTextureID());
+        mVideoSurfaceTexture = new SurfaceTexture(backFilter.getTextureId());
         mVideoSurfaceTexture.setOnFrameAvailableListener(new SurfaceTexture.OnFrameAvailableListener() {
             @Override
             public void onFrameAvailable(SurfaceTexture surfaceTexture) {
                 mHandler.sendEmptyMessage(MainHandler.MSG_FRAME_AVAILABLE);
             }
         });
-        Log.e(TAG, "init: fileName = " + assetMP4);
-        backFilter.init(assetMP4, mVideoSurfaceTexture);
+        backFilter.init(userSelVideo, mVideoSurfaceTexture);
 
         passThroughFilter = new PassThroughFilter();
         passThroughFilter.init();
-
         mRecordEncoder = new RecordEncoder();
 
         outputFile = new File(Environment.getExternalStorageDirectory().getPath(), "camera-test.mp4");
-        Log.e(TAG, "surfaceCreated: outputFile = " + outputFile );
-
-        fbo = FBO.newInstance().create(VIDEO_WIDTH, VIDEO_HEIGHT);
 
         recording = mRecordEncoder.isRecording();
+        mRequestRecord = false;
+//        try {
+//            Thread.sleep(500);
+//        }catch (InterruptedException e) {
+//            e.printStackTrace();
+//            Log.e(TAG, "surfaceCreated: wait YUVFilter is error");
+//        }
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         Log.d(TAG, "surfaceChanged:  holder = " + holder + ", width" + width +", height = " + height);
-        backFilter.onSurfaceCreated(width, height);
-        Log.e(TAG, "surfaceChanged: sv.getHeight() = " + sv.getHeight() + ", sv.getWidth()" + sv.getWidth());
+        backFilter.setScreenWH(width, height);
 
-        setDisViewPort(width, height, 540, 960);
-//        GLES20.glViewport(0, 0, width, height);
         //设置清屏颜色
         GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     }
+
+    boolean frame_extract = false;//抽帧专用
+    int prviewUpdataCount = 0;//预览丢帧计数
+    boolean updata;//是否更新纹理标志位
 
     private void drawFrame() {
         if (mEglCore == null) {
             Log.d(TAG, "Skipping drawFrame after shutdown");
             return;
         }
-
-        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT | GLES20.GL_COLOR_BUFFER_BIT);
-
         mDisplaySurface.makeCurrent();
-
-//        fbo.bind();
-//        GLES20.glViewport((int)viewportRect.left, (int)viewportRect.top, (int)viewportRect.width(), (int)viewportRect.height());
-//
         mVideoSurfaceTexture.updateTexImage();
-//        backFilter.onDrawFrame(backFilter.getTextureID());
 
+        if (!isViewportInit) {
+            viewportRect = calDisViewPort(sv.getWidth(), sv.getHeight(),
+                    frontFilter.getVideoWidth(), frontFilter.getVideoHeight());
+            isViewportInit = true;
+        }
+
+        //抽帧，为了解决模板帧率为15帧，而用户摄像头摄像的帧数为30帧的问题
+        //可以不用mediaplayer 改用 mediacodec进行解码，在解码的过程中进行抽帧
+        if (!frame_extract) {
+            frame_extract = true;
+            return;
+        } else {
+            frame_extract = false;
+        }
+
+        if (frontFilter.isEnd()||middleFilter.isEnd()) {
+            Log.e(TAG, "frontFilter isEnd");
+            mRequestRecord = false;
+        } else {
+            if (mRequestRecord) {
+                recordDraw();
+            } else {
+                //预览时，丢弃几帧防止出现无法采集到数据（YUV数据为空时，opengl纹理为绿色）
+                if (prviewUpdataCount < 3) {
+                    prviewUpdataCount++;
+                    updata = true;
+                } else {
+                    updata = false;
+                }
+                previewDraw(updata);
+            }
+            mDisplaySurface.swapBuffers();
+        }
+
+        // 录制 状态设置
+        if(mRequestRecord) {
+            if(!recording) {
+                mRecordEncoder.startRecording(new RecordEncoder.EncoderConfig(
+                        outputFile, musicAudio,
+                        frontFilter.getVideoWidth(), frontFilter.getVideoHeight(),
+                        2500000,
+                        EGL14.eglGetCurrentContext(), TemplateComposeActivity.this));
+                mRecordEncoder.setTextureId(fbo.getTextureId());
+                recording = mRecordEncoder.isRecording();
+            }
+            //设置进度条
+//            Log.i(TAG, "drawFrame:  frontFilter.getCurTime(); = " +  frontFilter.getCurTime());
+//            Log.i(TAG, "drawFrame:  frontFilter.getDuration(); = " +  frontFilter.getDuration());
+            mRecordEncoder.frameAvailable(mVideoSurfaceTexture);
+        } else {
+            if(recording) {
+                mRecordEncoder.stopRecording();
+                middleFilter.stop();
+                frontFilter.stop();
+                recording = false;
+                this.finish();
+            }
+        }
+    }
+
+    private void previewDraw(boolean updata) {
+        GLES20.glViewport(viewportRect.left, viewportRect.top, viewportRect.width(), viewportRect.height());
+        backFilter.onDrawFrame(backFilter.getTextureId());
         if(touchFlag) {
             GLES20.glEnable(GLES20.GL_BLEND);
             GLES20.glBlendFunc(GLES20.GL_ONE_MINUS_DST_COLOR, GLES20.GL_ONE);
-            frontFilter.onDrawFrame();
+            frontFilter.onDrawFrame(updata);
             GLES20.glDisable(GLES20.GL_BLEND);
         } else {
-//            long time = 0, lasttime = 0;
-//            lasttime = System.currentTimeMillis();
-//
-//            GLES20.glEnable(GLES20.GL_BLEND);
-//            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
-//            middleFilter.onDrawFrame();
-//            GLES20.glDisable(GLES20.GL_BLEND);
-//
-//            time = System.currentTimeMillis();
-//            Log.i(TAG, "diff: "+ (time - lasttime));
-//            lasttime = time;
+            GLES20.glEnable(GLES20.GL_BLEND);
+            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
+            middleFilter.onDrawFrame(updata);
+            GLES20.glDisable(GLES20.GL_BLEND);
 
-//            GLES20.glEnable(GLES20.GL_BLEND);
-//            GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
-            frontFilter.onDrawFrame();
-//            GLES20.glDisable(GLES20.GL_BLEND);
-//            time = System.currentTimeMillis();
-//            Log.i(TAG, "diff: "+ (time - lasttime));
+            GLES20.glEnable(GLES20.GL_BLEND);
+            GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
+            frontFilter.onDrawFrame(updata);
+            GLES20.glDisable(GLES20.GL_BLEND);
         }
-//        fbo.unbind();
-//
-//        GLES20.glViewport((int)viewportRect.left, (int)viewportRect.top, (int)viewportRect.width(), (int)viewportRect.height());
-//        passThroughFilter.onDrawFrame(fbo.getTextureId());
+    }
 
-        mDisplaySurface.swapBuffers();
+    private void recordDraw() {
+        if (fbo == null) {
+            fbo = FBO.newInstance().create(frontFilter.getVideoWidth(), frontFilter.getVideoHeight());
+            Log.i(TAG, "recordDraw: ");
+        }
 
-//        // 水印录制 状态设置
-//        if(mRequestRecord) {
-//            if(!recording) {
-//                mRecordEncoder.startRecording(new RecordEncoder.EncoderConfig(
-//                        outputFile, VIDEO_WIDTH, VIDEO_HEIGHT, 1000000,
-//                        EGL14.eglGetCurrentContext(), TemplateEditorActivity.this));
-//                mRecordEncoder.setTextureId(fbo.getTextureId());
-//                recording = mRecordEncoder.isRecording();
-//            }
-//            // mRecordEncoder.setTextureId(mTextureId);
-//            mRecordEncoder.frameAvailable(mVideoSurfaceTexture);
-//        } else {
-//            if(recording) {
-//                mRecordEncoder.stopRecording();
-//                recording = false;
-//            }
-//        }
+        fbo.bind();
+        GLES20.glViewport(0, 0,
+                frontFilter.getVideoWidth(),
+                frontFilter.getVideoHeight());
+        backFilter.onDrawFrame(backFilter.getTextureId());
+
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
+        middleFilter.onDrawFrame(true);
+        GLES20.glDisable(GLES20.GL_BLEND);
+
+        GLES20.glEnable(GLES20.GL_BLEND);
+        GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
+        frontFilter.onDrawFrame(true);
+        GLES20.glDisable(GLES20.GL_BLEND);
+        fbo.unbind();
     }
 
     @Override
@@ -241,11 +300,12 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
         switch (v.getId()) {
             case R.id.template_editor_back:
                 Log.d(TAG, "onClick: back");
-                mRequestRecord = true;
+                mRequestRecord = false;
                 break;
             case R.id.template_editor_next:
                 Log.d(TAG, "onClick: next");
-                mRequestRecord = false;
+                backFilter.restart();
+                mRequestRecord = true;
                 break;
         }
     }
@@ -262,7 +322,7 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
                 float current_x = event.getX();
                 float current_y = event.getY();
                 if (inViewportRect(current_x, current_y)) {
-                    translate(current_x, current_y, mLastX, mLastY);
+                    translate(current_x, current_y, mLastX, mLastY, backFilter);
                     mLastX = current_x;
                     mLastY = current_y;
                     return true;
@@ -291,7 +351,7 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
     }
 
     //平移变换
-    public void translate(float current_x, float current_y, float last_x, float last_y){
+    public void translate(float current_x, float current_y, float last_x, float last_y, AbsFilter absFilter){
         float normalizedX = ((current_x - viewportRect.left) / viewportRect.width()) * 2 - 1;
         float normalizedY = -(((current_y - viewportRect.top)/ viewportRect.height()) * 2 - 1);
         float lastNormalizedX = ((last_x - viewportRect.left) / viewportRect.width()) * 2 - 1;
@@ -300,16 +360,25 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
         float moveY = (normalizedY - lastNormalizedY)*2.5f;
         Log.i(TAG, "onTouchEvent: ACTION_MOVE moveX = " + moveX + ", moveY = " + moveY);
 
-        Matrix.setIdentityM(backFilter.getModelMatrix(), 0);
-        Matrix.translateM(backFilter.getModelMatrix(),0, moveX, moveY, 0);
-
+        Matrix.setIdentityM(absFilter.getModelMatrix(), 0);
+        Matrix.translateM(absFilter.getModelMatrix(),0, moveX, moveY, 0);
         Matrix.multiplyMM(
-                backFilter.getMVPMatrix(), 0,
-                backFilter.getMVPMatrix(), 0,
-                backFilter.getModelMatrix(),0);
+                absFilter.getMVPMatrix(), 0,
+                absFilter.getMVPMatrix(), 0,
+                absFilter.getModelMatrix(),0);
     }
 
-    private void setDisViewPort(int viewWidth, int viewHeight, int videoWidth, int videoHeight) {
+    public void rotate(float angle, AbsFilter absFilter) {
+        Matrix.setIdentityM(absFilter.getModelMatrix(), 0);
+        Matrix.rotateM(absFilter.getModelMatrix(),0, angle, 0, 0, 1);
+
+        Matrix.multiplyMM(
+                absFilter.getMVPMatrix(), 0,
+                absFilter.getMVPMatrix(), 0,
+                absFilter.getModelMatrix(),0);
+    }
+
+    private Rect calDisViewPort(int viewWidth, int viewHeight, int imageWidth, int imageHeight) {
 
         /**
          * 视口（Viewport）就是最终渲染结果显示的目的地
@@ -318,34 +387,33 @@ public class TemplateEditorActivity extends Activity implements SurfaceHolder.Ca
          * 应该有两个视口，一个是用户调试用的视口
          * 一个是最后合成渲染的视口，这个视口应该是前景或中景的分辨率大小
          */
-        float videoRatio = (float)videoWidth/videoHeight;
+        float videoRatio = (float)imageWidth/imageHeight;
         disVPWidth = (int)((float)viewHeight*videoRatio);//视口宽度;
         disVPHeight = viewHeight;
 
         Log.i(TAG, "onSurfaceChanged: VPWidth:" + disVPWidth +" VPHeight:" + disVPHeight);
         disVPx = viewWidth/2- disVPWidth/2;
         disVPy = viewHeight/2- disVPHeight/2;
-        GLES20.glViewport(disVPx, disVPy, disVPWidth, disVPHeight);
 
-        Log.i(TAG, "onSurfaceChanged: VPx: "+disVPx );
-        Log.i(TAG, "onSurfaceChanged: VPy: "+disVPy );
-        Log.i(TAG, "onSurfaceChanged: VPWidth: "+disVPWidth );
-        Log.i(TAG, "onSurfaceChanged: VPHeight: "+disVPHeight );
-        viewportRect = new RectF(disVPx, disVPy, disVPx + disVPWidth, disVPy + disVPHeight);
+        Log.i(TAG, "disVPx: "+disVPx );
+        Log.i(TAG, "disVPy: "+disVPy );
+        Log.i(TAG, "disVPWidth: "+disVPWidth );
+        Log.i(TAG, "disVPHeight: "+disVPHeight );
+        return new Rect(disVPx, disVPy, disVPx + disVPWidth, disVPy + disVPHeight);
     }
 
     public static class MainHandler extends Handler {
-        private WeakReference<TemplateEditorActivity> mWeakActivity;
+        private WeakReference<TemplateComposeActivity> mWeakActivity;
 
         public static final int MSG_FRAME_AVAILABLE = 1;
 
-        MainHandler(TemplateEditorActivity activity) {
-            mWeakActivity = new WeakReference<TemplateEditorActivity>(activity);
+        MainHandler(TemplateComposeActivity activity) {
+            mWeakActivity = new WeakReference<TemplateComposeActivity>(activity);
         }
 
         @Override
         public void handleMessage(Message msg) {
-            TemplateEditorActivity activity = mWeakActivity.get();
+            TemplateComposeActivity activity = mWeakActivity.get();
             if (activity == null) {
                 Log.d(TAG, "Got message for dead activity");
                 return;

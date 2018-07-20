@@ -3,28 +3,11 @@
 //
 
 
+//#include <include/libswresample/swresample.h>
 #include "LogJni.h"
 #include "FFmpegDEcode.h"
 #include "decoder.h"
 #include "Queue.h"
-
-typedef struct Decoder {
-    AVPacket pkt;
-    AVPacket pkt_temp;
-    PacketQueue *queue;
-    AVCodecContext *avctx;
-    int pkt_serial;
-    int finished;
-    int packet_pending;
-    pthread_cond_t *empty_queue_cond;
-    int64_t start_pts;
-    AVRational start_pts_tb;
-    int64_t next_pts;
-    AVRational next_pts_tb;
-//    Thread *decoder_tid;
-} Decoder;
-#define MAX_QUEUE_SIZE (15 * 1024 * 1024)
-
 
 void get_abstime_wait(long timeout_ms, struct timespec *abstime)
 {
@@ -37,21 +20,22 @@ void get_abstime_wait(long timeout_ms, struct timespec *abstime)
 }
 
 Player::Player() {
-    frame_count = 0;
-    width = -1;
-    height = -1;
+    videoWidth = -1;
+    videoHeight = -1;
     duration = -1;
 
     abort_request = 0;
 
     paused = 0;
     seek_req = 0;
-    seek_pos = -1;
+    seek_pos = 0;
 
     avFormatContext = NULL;
     avctxAudio= NULL;
     avctxVideo = NULL;
     avctxSubtitle = NULL;
+
+    img_convert_ctx = NULL;
 
     memset(st_index, -1, sizeof(st_index));
     audio_stream = -1;
@@ -64,20 +48,13 @@ Player::Player() {
     frameQueue = new MyFrameQueue();
 
     pthread_cond_init(&continue_read_thread, NULL);
+
+    av_init_packet(&flush_pkt);
 }
 
 Player::~Player() {
-    /* XXX: use a special url_shutdown call to abort parse cleanly */
-//    is->abort_request = 1;
-//    SDL_WaitThread(is->read_tid, NULL);
-
-    /* close each stream */
-    if (audio_stream >= 0)
-        stream_component_close(audio_stream);
-    if (video_stream >= 0)
-        stream_component_close(video_stream);
-    if (subtitle_stream >= 0)
-        stream_component_close(subtitle_stream);
+    delete q;
+    delete frameQueue;
 }
 
 void Player::stream_component_close(int stream_index)
@@ -89,20 +66,50 @@ void Player::stream_component_close(int stream_index)
         return;
     codecpar = ic->streams[stream_index]->codecpar;
 
+    q->packet_queue_destroy(&videoq);
+    q->packet_queue_destroy(&audioq);
+    q->packet_queue_destroy(&subtitleq);
+
     switch (codecpar->codec_type) {
         case AVMEDIA_TYPE_AUDIO:
-//            decoder_destroy(&is->auddec);
-//            swr_free(&is->swr_ctx);
+            q->packet_queue_abort(&audioq);
+            frameQueue->frame_queue_abort(&sampq);
+
+            pthread_join(audio_tid, NULL);
+            audio_tid = 0;
+
+            q->packet_queue_flush(&audioq);
+            frameQueue->frame_queue_flush(&sampq);
+
+            avcodec_free_context(&avctxAudio);
+
+//            swr_free(&swr_ctx);
+            //todo 释放音频解码缓冲区
+//            av_freep(&is->audio_buf1);
+
             break;
         case AVMEDIA_TYPE_VIDEO:
-//            av_packet_unref(&d->pkt);
+            q->packet_queue_abort(&videoq);
+            frameQueue->frame_queue_abort(&pictq);
+
+            pthread_join(video_tid, NULL);
+            video_tid = 0;
+
+            q->packet_queue_flush(&videoq);
+            frameQueue->frame_queue_flush(&pictq);
+
             avcodec_free_context(&avctxVideo);
-//        decoder_abort(&is->viddec, &is->pictq);
-//            decoder_destroy(&is->viddec);
             break;
         case AVMEDIA_TYPE_SUBTITLE:
-//		decoder_abort(&is->subdec, &is->subpq);
-//            decoder_destroy(&is->subdec);
+            q->packet_queue_abort(&subtitleq);
+            frameQueue->frame_queue_abort(&subpq);
+//            pthread_join(video_tid, NULL);
+//            video_tid = NULL;
+
+            q->packet_queue_flush(&videoq);
+            frameQueue->frame_queue_flush(&pictq);
+
+            avcodec_free_context(&avctxSubtitle);
             break;
         default:
             break;
@@ -127,7 +134,83 @@ void Player::stream_component_close(int stream_index)
     }
 }
 
-FILE *fp_yuv = NULL;
+int Player::display_audio() {
+    int ret = -1;
+    AVPacket pkt;
+
+    pthread_mutex_t wait_mutex;
+    pthread_mutex_init(&wait_mutex, NULL);
+
+    AVFrame *avFrame = av_frame_alloc();
+
+    for (;;) {
+        if (abort_request) {
+            LOGE("abort_request = %d, num = %d", abort_request, decoderNum);
+            break;
+        }
+
+        if (sampq.nb_frames >= 10) {
+//            LOGI("nb_frames >= 10, num = %d", decoderNum);
+            struct timespec abstime;
+            pthread_mutex_lock(&wait_mutex);
+            get_abstime_wait(100, &abstime);
+            pthread_cond_timedwait(&continue_read_thread, &wait_mutex, &abstime);
+            pthread_mutex_unlock(&wait_mutex);
+            continue;
+        }
+
+        do {
+//        LOGI("packet_queue_get start, num = %d", decoderNum);
+            ret = q->packet_queue_get(&audioq, &pkt, 1, NULL);
+            if (ret < 0) {
+                LOGI("decode ret = %d ", ret);
+                return -1;
+            }
+//        LOGI("packet_queue_get end, num = %d", decoderNum);
+            if (pkt.data == q->flush_pkt.data) {
+                avcodec_flush_buffers(avctxAudio);
+            }
+//        LOGI("Decoder::decode while in, num = %d", decoderNum);
+        } while(pkt.data == q->flush_pkt.data);
+
+//        LOGI("Decoder::decode while, num = %d", decoderNum);
+        if (pkt.stream_index == audio_stream) {//解码videopacket
+            //YUV
+            ret = avcodec_send_packet(avctxAudio, &pkt);
+            if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+                LOGI("ret = %d", ret);
+                av_packet_unref(&pkt);
+                return -1;
+            }
+
+            ret = avcodec_receive_frame(avctxAudio, avFrame);
+            if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+                LOGI("ret = %d", ret);
+                av_packet_unref(&pkt);
+                return -1;
+            }
+
+//            sws_scale(img_convert_ctx, (const uint8_t* const*)avFrame->data, avFrame->linesize, 0,
+//                      avctxAudio->height, YUVFrame->data, YUVFrame->linesize);
+//
+//            char *tmp = (char *)calloc(1, yuvSize);
+//            memcpy(tmp, YUVFrame->data[0], yFrameSize );
+//            memcpy(tmp + yFrameSize, YUVFrame->data[1], uvFrameSize );
+//            memcpy(tmp + yFrameSize + uvFrameSize, YUVFrame->data[2], uvFrameSize );
+//            ret = frameQueue->frame_queue_put(&pictq, tmp);
+        }
+        av_packet_unref(&pkt);
+    }
+
+    return ret;
+}
+
+void *Player::audio_thread(void *arg) {
+    Player *ptr = (Player *)arg;
+
+    ptr->display_audio();
+    return NULL;
+}
 
 int Player::display_video() {
     int ret = -1;
@@ -135,15 +218,33 @@ int Player::display_video() {
 
     pthread_mutex_t wait_mutex;
     pthread_mutex_init(&wait_mutex, NULL);
-    for (;;) {
 
+    AVFrame *avFrame = av_frame_alloc();
+    AVFrame *YUVFrame = av_frame_alloc();
+
+    //视频宽度必须为8的倍数
+    this->convertWidth = videoWidth + (8 - videoWidth%8);
+    this->convertHeight = videoHeight;
+    LOGD("this->convertWidth = %d", this->convertWidth);
+
+    yFrameSize = convertWidth*convertHeight;
+    uvFrameSize= yFrameSize>>2;
+    yuvSize = convertWidth*convertHeight * 3 / 2;
+
+    int sizeYuv = av_image_get_buffer_size(AV_PIX_FMT_YUV420P, convertWidth, convertHeight, 1);
+    frame_buffer_out = (uint8_t *)av_malloc(sizeYuv);
+    av_image_fill_arrays(YUVFrame->data, YUVFrame->linesize, frame_buffer_out, AV_PIX_FMT_YUV420P, convertWidth, convertHeight, 1);
+    img_convert_ctx = sws_getContext(avctxVideo->width, avctxVideo->height, avctxVideo->pix_fmt,
+                                     convertWidth, convertHeight, AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL);
+
+    for (;;) {
         if (abort_request) {
             LOGE("abort_request = %d, num = %d", abort_request, decoderNum);
             break;
         }
 
-        if (videoFrameq.nb_frames >= 10) {
-            LOGI("nb_frames >= 10, num = %d", decoderNum);
+        if (pictq.nb_frames >= 10) {
+//            LOGI("nb_frames >= 10, num = %d", decoderNum);
             struct timespec abstime;
             pthread_mutex_lock(&wait_mutex);
             get_abstime_wait(100, &abstime);
@@ -182,7 +283,7 @@ int Player::display_video() {
                 av_packet_unref(&pkt);
                 return -1;
             }
-
+            currentTime = pkt.pts * av_q2d(avFormatContext->streams[video_stream]->time_base) * 1000;//转换出来的是秒，*1000转换为毫秒
             sws_scale(img_convert_ctx, (const uint8_t* const*)avFrame->data, avFrame->linesize, 0,
                       avctxVideo->height, YUVFrame->data, YUVFrame->linesize);
 
@@ -190,16 +291,13 @@ int Player::display_video() {
             memcpy(tmp, YUVFrame->data[0], yFrameSize );
             memcpy(tmp + yFrameSize, YUVFrame->data[1], uvFrameSize );
             memcpy(tmp + yFrameSize + uvFrameSize, YUVFrame->data[2], uvFrameSize );
-            LOGI("Decoder::decode frame_queue_put");
-            ret = frameQueue->frame_queue_put(&videoFrameq, tmp);
-            LOGE("ret = %d", ret);
-//            int size;
-//            size = fwrite(tmp, 1, yuvSize, fp_yuv);
-//            LOGE("size = %d", size);
+            ret = frameQueue->frame_queue_put(&pictq, tmp);
         }
-//        LOGI("Decoder::decode av_packet_unref");
         av_packet_unref(&pkt);
     }
+
+    av_frame_free(&avFrame);
+    av_frame_free(&YUVFrame);
 
     return ret;
 }
@@ -208,7 +306,11 @@ void *Player::video_thread(void *arg) {
     Player *ptr = (Player *)arg;
 
     ptr->display_video();
+    return NULL;
 }
+
+FILE *fp_AAC0 = NULL;
+FILE *fp_AAC1 = NULL;
 
 int Player::stream_component_open(int stream_index) {
     AVCodecContext * avctx;
@@ -246,6 +348,21 @@ int Player::stream_component_open(int stream_index) {
 
             avctxAudio = avctx;
             q->packet_queue_start(&audioq);
+
+            sample_rate    = avctx->sample_rate;
+            nb_channels    = avctx->channels;
+            channel_layout = avctx->channel_layout;
+            LOGI("sample_rate = %d num = %d", sample_rate, decoderNum);
+            LOGI("nb_channels = %d num = %d", nb_channels, decoderNum);
+            LOGI("channel_layout = %d num = %d\"", channel_layout, decoderNum);
+            LOGI("decoder name：%s, num = %d", codec->name, decoderNum);
+
+//            if (decoderNum == 0) {
+//                fp_AAC0 = fopen("/storage/emulated/0/fp_AAC0.aac","wb+");
+//
+//            } else if (decoderNum == 1) {
+//                fp_AAC1 = fopen("/storage/emulated/0/fp_AAC1.aac","wb+");
+//            }
         }
             break;
         case AVMEDIA_TYPE_VIDEO: {
@@ -254,41 +371,16 @@ int Player::stream_component_open(int stream_index) {
 
             avctxVideo = avctx;
             q->packet_queue_start(&videoq);
-            this->width = avctxVideo->width;
-            this->height = avctxVideo->height;
+            this->videoWidth = avctxVideo->width;
+            this->videoHeight = avctxVideo->height;
+            this->duration = avFormatContext->duration / 1000;
             LOGI("video format: %s, num = %d", avFormatContext->iformat->name, decoderNum);
-            LOGI("video duration: %lld, num = %d", avFormatContext->duration, decoderNum);
+            LOGI("video duration: %d ms, num = %d", duration, decoderNum);
             LOGI("video w = %d, h = %d, num = %d", avctxVideo->width, avctxVideo->height, decoderNum);
             LOGI("decoder name：%s, num = %d", codec->name, decoderNum);
 
-            avFrame = av_frame_alloc();
-            YUVFrame = av_frame_alloc();
-
-//            yFrameSize = width*height;
-//            uvFrameSize= yFrameSize>>2;
-//            yuvSize = width*height * 3 / 2;
-//
-//            int sizeYuv = av_image_get_buffer_size(AV_PIX_FMT_YUV420P, width, height, 1);
-//            frame_buffer_out = (uint8_t *)av_malloc(sizeYuv);
-//            av_image_fill_arrays(YUVFrame->data, YUVFrame->linesize, frame_buffer_out, AV_PIX_FMT_YUV420P, width, height, 1);
-//            img_convert_ctx = sws_getContext(avctxVideo->width, avctxVideo->height, avctxVideo->pix_fmt,
-//                                             avctxVideo->width, avctxVideo->height, AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL);
-            this->width = 544;
-            this->height = 960;
-
-            yFrameSize = width*height;
-            uvFrameSize= yFrameSize>>2;
-            yuvSize = width*height * 3 / 2;
-
-            int sizeYuv = av_image_get_buffer_size(AV_PIX_FMT_YUV420P, width, height, 1);
-            frame_buffer_out = (uint8_t *)av_malloc(sizeYuv);
-            av_image_fill_arrays(YUVFrame->data, YUVFrame->linesize, frame_buffer_out, AV_PIX_FMT_YUV420P, width, height, 1);
-            img_convert_ctx = sws_getContext(avctxVideo->width, avctxVideo->height, avctxVideo->pix_fmt,
-                                             width, height, AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL);
-
             // TODO 失败处理
-            pthread_t thr1;
-            if(pthread_create(&thr1, NULL, video_thread, (void *)this) != 0) {
+            if(pthread_create(&video_tid, NULL, video_thread, (void *)this) != 0) {
                 LOGI("pthread_create initDecoder fail");
             }
         }
@@ -311,8 +403,6 @@ int Player::stream_component_open(int stream_index) {
 
 int Player::init() {
     int ret = -1;
-//    LOGI("av_frame_alloc");
-    fp_yuv = fopen("/storage/emulated/0/outyuv.yuv","wb+");
 
     if (filename == NULL) {
         LOGI("path is null");
@@ -326,8 +416,9 @@ int Player::init() {
         LOGI("packet_queue_init FAIL");
 //        goto fail;
 
-    if (frameQueue->frame_queue_init(&videoFrameq) < 0 ||
-        frameQueue->frame_queue_init(&audioFrameq) < 0)
+    if (frameQueue->frame_queue_init(&pictq) < 0 ||
+        frameQueue->frame_queue_init(&sampq) < 0 ||
+        frameQueue->frame_queue_init(&subpq) < 0)
         LOGI("frame_queue_init FAIL");
 
     //1.注册所有组件
@@ -407,8 +498,8 @@ void Player::read() {
             break;
         }
 
-        if (videoq.nb_packets >= 10) {
-            LOGI("nb_packets >= 10, num = %d", decoderNum);
+        if (videoq.nb_packets >= 10) {//TODO 应该做音频读取大小的限制，防止内存溢出
+//            LOGI("nb_packets >= 10, num = %d", decoderNum);
             struct timespec abstime;
             pthread_mutex_lock(&wait_mutex);
             get_abstime_wait(100, &abstime);
@@ -416,6 +507,7 @@ void Player::read() {
             pthread_mutex_unlock(&wait_mutex);
             continue;
         }
+
         ret = av_read_frame(avFormatContext, pkt);
         if (ret < 0) {
             LOGI("av_read_frame fail ret= %d \n", ret);
@@ -447,17 +539,18 @@ void Player::read() {
         }
 
         if (pkt->stream_index == audio_stream) {
+//            q->packet_queue_put(&audioq, pkt);
             av_packet_unref(pkt);
         } else if (pkt->stream_index == video_stream
                    && !(video_st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
             q->packet_queue_put(&videoq, pkt);
         } else if (pkt->stream_index == subtitle_stream) {
+//            q->packet_queue_put(&subtitleq, pkt);
             av_packet_unref(pkt);
         } else {
             av_packet_unref(pkt);
         }
-//            q->packet_queue_put(&audioq, pkt);
-//            q->packet_queue_put(&subtitleq, pkt);
+
     }
 }
 
@@ -473,74 +566,56 @@ void Player::start(const char *path, int num) {
     decoderNum = num;
 
     // TODO 失败处理
-    pthread_t thr1;
-    if(pthread_create(&thr1, NULL, read_pth, (void *)this) != 0) {
+    if(pthread_create(&read_tid, NULL, read_pth, (void *)this) != 0) {
         LOGI("pthread_create initDecoder fail");
     }
 }
 
 int Player::stop() {
     //TODO
+    /* XXX: use a special url_shutdown call to abort parse cleanly */
+    abort_request = 1;
+    LOGW("abort_request = %d  num = %d", abort_request, decoderNum);
+    pthread_join(read_tid, NULL);
+    LOGW("read_tid num = %d", decoderNum);
+    /* close each stream */
+    if (audio_stream >= 0)
+//        stream_component_close(audio_stream);
+    if (video_stream >= 0)
+        stream_component_close(video_stream);
+    if (subtitle_stream >= 0)
+//        stream_component_close(subtitle_stream);
+    LOGW("subtitle_stream stream_component_close num = %d", decoderNum);
+    avformat_close_input(&avFormatContext);
+
+    q->packet_queue_destroy(&videoq);
+//    q->packet_queue_destroy(&audioq);
+//    q->packet_queue_destroy(&subtitleq);
+//
+//    /* free all pictures */
+    frameQueue->frame_queue_destroy(&pictq);
+//    frameQueue->frame_queue_destroy(&sampq);
+//    frameQueue->frame_queue_destroy(&subpq);
+    pthread_cond_destroy(&continue_read_thread);
+    sws_freeContext(img_convert_ctx);
+//    sws_freeContext(sub_convert_ctx);
+
+    av_free(filename);
     LOGI("stop");
     return 0;
 }
 
-//int Player::decode(uint8_t* data) {
-//    int ret = -1;
-//    AVPacket pkt;
-//
-//    do {
-////        LOGI("packet_queue_get start, num = %d", decoderNum);
-//        ret = q->packet_queue_get(&videoq, &pkt, 1, NULL);
-//        if (ret < 0) {
-//            LOGI("decode ret = %d ", ret);
-//            return -1;
-//        }
-////        LOGI("packet_queue_get end, num = %d", decoderNum);
-//        if (pkt.data == q->flush_pkt.data) {
-//            avcodec_flush_buffers(avctxVideo);
-//        }
-//        LOGI("Decoder::decode while in, num = %d", decoderNum);
-//    } while(pkt.data == q->flush_pkt.data);
-//
-////    LOGI("Decoder::decode while, num = %d", decoderNum);
-//    if (pkt.stream_index == video_stream) {//解码videopacket
-//        //YUV
-//        ret = avcodec_send_packet(avctxVideo, &pkt);
-//        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-//            LOGI("ret = %d", ret);
-//            av_packet_unref(&pkt);
-//            return -1;
-//        }
-//
-//        ret = avcodec_receive_frame(avctxVideo, avFrame);
-//        if (ret < 0 && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-//            LOGI("ret = %d", ret);
-//            av_packet_unref(&pkt);
-//            return -1;
-//        }
-//
-//        sws_scale(img_convert_ctx, (const uint8_t* const*)avFrame->data, avFrame->linesize, 0,
-//                  avctxVideo->height, YUVFrame->data, YUVFrame->linesize);
-//
-//        memcpy(data, YUVFrame->data[0], yFrameSize );
-//        memcpy(data + yFrameSize, YUVFrame->data[1], uvFrameSize );
-//        memcpy(data + yFrameSize + uvFrameSize, YUVFrame->data[2], uvFrameSize );
-//
-////        fwrite(data, 1, yuvSize, fp_yuv);
-//    }
-////    LOGI("Decoder::decode av_packet_unref");
-//    av_packet_unref(&pkt);
-//
-//    return ret;
-//}
-
-int Player::decode(uint8_t* data) {
+int Player::getVideoData(uint8_t* data) {
     char *tmp = NULL;
+
+    if ((pictq.nb_frames == 0)&&(eof)) {
+        LOGE("video frame had done");
+        return -1;
+    }
 
     do {
         LOGD("frame_queue_get START");
-        frameQueue->frame_queue_get(&videoFrameq, &tmp, 1);
+        frameQueue->frame_queue_get(&pictq, &tmp, 1);
         LOGD("frame_queue_get END");
     } while (NULL == tmp);
 
@@ -550,10 +625,49 @@ int Player::decode(uint8_t* data) {
     return 0;
 }
 
+int Player::getAudioData(uint8_t *data) {
+    char *tmp = NULL;
+    do {
+        LOGD("frame_queue_get START");
+        frameQueue->frame_queue_get(&sampq, &tmp, 1);
+        LOGD("frame_queue_get END");
+    } while (NULL == tmp);
+
+    LOGD("memcpy");
+    //todo 写入本地文件 + 计算每帧大小
+    memcpy(data, tmp, yuvSize );
+    free(tmp);
+    return 0;
+}
+
+bool Player::is_end() {
+    if ((eof)&&(pictq.nb_frames == 0)) {
+//        LOGE("video frame had done num = %d", decoderNum);
+        return true;
+    }
+    return false;
+}
+
 int Player::getVideoWidth() {
-    return this->width;
+    return this->videoWidth;
 }
 
 int Player::getVideoHeight() {
-    return this->height;
+    return this->videoHeight;
+}
+
+int Player::getConvertWidth() {
+    return this->convertWidth;
+}
+
+int Player::getConvettHeight() {
+    return this->convertHeight;
+}
+
+int Player::getCurTime() {
+    return this->currentTime;//注意现在获取的是ffmpeg解码时packet的时间，单位毫秒（应该是frame的时间才对）
+}
+
+int Player::getDuration() {
+    return this->duration;
 }

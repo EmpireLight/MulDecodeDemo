@@ -107,16 +107,6 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
         String asset1MP4 = FileUtils.getSDPath() + "/" + "asset1.mp4";
         String assetMP4 = FileUtils.getSDPath() + "/" + "asset.mp4";
 
-        int frame_count = 1;
-        String loadFile = null;
-        loadFile = String.format(DirAsset0 + "/" + "frame_%05d.jpg", frame_count);
-        middleImgFilter = new ImageFilter(context);
-        middleImgFilter.init(loadFile);
-
-        loadFile = String.format(DirAsset1 + "/" + "frame_%05d.jpg", frame_count);
-        frontImgFilter = new ImageFilter(context);
-        frontImgFilter.init(loadFile);
-
         middleFilter = new YUVFilter(context);
         middleFilter.init(asset0MP4, 0);
 
@@ -131,7 +121,7 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
 
         backFilter = new BackVideoFilter(context);
         //注意这里，创建了一个SurfaceTexture
-        mVideoSurfaceTexture = new SurfaceTexture(backFilter.getTextureID());
+        mVideoSurfaceTexture = new SurfaceTexture(backFilter.getTextureId());
         mVideoSurfaceTexture.setOnFrameAvailableListener(this);
 
         Log.e(TAG, "init: fileName = " + assetMP4);
@@ -177,12 +167,12 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
         GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT | GLES20.GL_COLOR_BUFFER_BIT);
 
         mVideoSurfaceTexture.updateTexImage();
-        backFilter.onDrawFrame(backFilter.getTextureID());
+        backFilter.onDrawFrame(backFilter.getTextureId());
 
         if(touchFlag) {
             GLES20.glEnable(GLES20.GL_BLEND);
             GLES20.glBlendFunc(GLES20.GL_ONE_MINUS_DST_COLOR, GLES20.GL_ONE);
-            frontFilter.onDrawFrame();
+            frontFilter.onDrawFrame(true);
             GLES20.glDisable(GLES20.GL_BLEND);
         } else {
 //            long time = 0, lasttime = 0;
@@ -190,7 +180,7 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
 
             GLES20.glEnable(GLES20.GL_BLEND);
             GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
-            middleFilter.onDrawFrame();
+            middleFilter.onDrawFrame(true);
             GLES20.glDisable(GLES20.GL_BLEND);
 
 //            time = System.currentTimeMillis();
@@ -199,7 +189,7 @@ public class VideoEditorView extends GLSurfaceView implements GLSurfaceView.Rend
 
             GLES20.glEnable(GLES20.GL_BLEND);
             GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
-            frontFilter.onDrawFrame();
+            frontFilter.onDrawFrame(true);
             GLES20.glDisable(GLES20.GL_BLEND);
 //
 //            time = System.currentTimeMillis();

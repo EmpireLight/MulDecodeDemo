@@ -16,6 +16,10 @@ import com.xmb.muldecodedemo.utils.OpenGlUtils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
+
+import static android.media.MediaExtractor.SEEK_TO_CLOSEST_SYNC;
+import static android.media.MediaExtractor.SEEK_TO_PREVIOUS_SYNC;
 
 /**
  * Created by Administrator on 2018/6/20 0020.
@@ -38,8 +42,6 @@ public class VideoDecoder {
 
     Surface surface;
 
-    public static LinkedBlockingQueue<byte[]> videoQueue;
-
     public int videoWidth = -1;
     public int videoHeight= -1;
     public long duration = -1;
@@ -50,8 +52,6 @@ public class VideoDecoder {
         this.surface = surface;
         mMetRet = new MediaMetadataRetriever();
         mExtractor = new MediaExtractor();//创建对象
-
-        videoQueue = new LinkedBlockingQueue<>();//创建编码数据队列
 
         try {
             mExtractor.setDataSource(path);//设置视频文件路径
@@ -90,7 +90,6 @@ public class VideoDecoder {
                 //根据上面获取到的信息创建解码器
                 try {
                     mVideoDecoder = MediaCodec.createDecoderByType(mime);
-
                 } catch (IOException e) {
                     e.printStackTrace();
                     throw new RuntimeException("createDecoderByType fail");
@@ -153,8 +152,6 @@ public class VideoDecoder {
         return 0;
     }
 
-    private long diff, lastTime;
-
     public void videoDecode() {
         //向MediaCodec的inputBuffer中写入数据，而数据就是来自上面MediaExtractor中解析出的Track
         MediaCodec.BufferInfo videoBufferInfo = new MediaCodec.BufferInfo();
@@ -186,16 +183,6 @@ public class VideoDecoder {
             int outputBufferIndex = mVideoDecoder.dequeueOutputBuffer(videoBufferInfo, TIMEOUT_US);  //获得已经成功解码的ByteBuffer的id
             if (surface == null) {
                 while (outputBufferIndex >= 0) {
-                    ByteBuffer outputBuffer = outputBuffers[outputBufferIndex];
-                    byte[] outData = new byte[videoBufferInfo.size];
-                    outputBuffer.get(outData);//将bytebuffer内的数据放入byte数组中
-
-                    try {
-                        videoQueue.put(outData);
-                        Log.v(TAG, "put " + count++);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
                     //释放已经解码的buffer
                     mVideoDecoder.releaseOutputBuffer(outputBufferIndex, false);
 
