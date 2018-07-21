@@ -4,4 +4,6 @@
     <string name="next_tel">下一步</string>
 
     <string name="video_editor">视频编辑器</string>
+
+    <string name="wait_hint">正在合成中～请稍后</string>
 </resources>

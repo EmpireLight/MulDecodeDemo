@@ -69,9 +69,10 @@ void Player::stream_component_close(int stream_index)
     q->packet_queue_destroy(&videoq);
     q->packet_queue_destroy(&audioq);
     q->packet_queue_destroy(&subtitleq);
-
+    LOGW("switch");
     switch (codecpar->codec_type) {
         case AVMEDIA_TYPE_AUDIO:
+            LOGW("AVMEDIA_TYPE_AUDIO");
             q->packet_queue_abort(&audioq);
             frameQueue->frame_queue_abort(&sampq);
 
@@ -89,18 +90,22 @@ void Player::stream_component_close(int stream_index)
 
             break;
         case AVMEDIA_TYPE_VIDEO:
+            LOGW("AVMEDIA_TYPE_VIDEO");
             q->packet_queue_abort(&videoq);
+            LOGW("frame_queue_abort");
             frameQueue->frame_queue_abort(&pictq);
 
+            LOGI("pthread_join S");
             pthread_join(video_tid, NULL);
             video_tid = 0;
-
+            LOGI("AVMEDIA_TYPE_VIDEO E");
             q->packet_queue_flush(&videoq);
             frameQueue->frame_queue_flush(&pictq);
 
             avcodec_free_context(&avctxVideo);
             break;
         case AVMEDIA_TYPE_SUBTITLE:
+            LOGW("AVMEDIA_TYPE_SUBTITLE");
             q->packet_queue_abort(&subtitleq);
             frameQueue->frame_queue_abort(&subpq);
 //            pthread_join(video_tid, NULL);
@@ -114,7 +119,7 @@ void Player::stream_component_close(int stream_index)
         default:
             break;
     }
-
+    LOGW("AVDISCARD_ALL");
     ic->streams[stream_index]->discard = AVDISCARD_ALL;
     switch (codecpar->codec_type) {
         case AVMEDIA_TYPE_AUDIO:

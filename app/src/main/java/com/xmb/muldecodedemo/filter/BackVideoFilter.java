@@ -3,6 +3,9 @@ package com.xmb.muldecodedemo.filter;
 import android.content.Context;
 import android.graphics.SurfaceTexture;
 import android.media.AudioManager;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
+import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.opengl.GLES11Ext;
@@ -17,7 +20,8 @@ import com.xmb.muldecodedemo.programs.GLAbsProgram;
 import com.xmb.muldecodedemo.utils.OpenGlUtils;
 
 import java.io.IOException;
-import java.util.concurrent.Semaphore;
+
+import javax.xml.datatype.Duration;
 
 /**
  * Created by Administrator on 2018/7/6 0006.
@@ -36,6 +40,8 @@ public class BackVideoFilter extends AbsFilter {
 
     private int videoWidth;
     private int videoHeight;
+    private int videoFPS;
+    private long videoDuration;
     private MediaPlayer mediaPlayer;
 
     public BackVideoFilter(Context context) {
@@ -61,12 +67,18 @@ public class BackVideoFilter extends AbsFilter {
         OpenGlUtils.deleteTexture(OESTextureID);
     }
 
+    //用图像帧需要换算矩阵，否则出现的图像变形
     @Override
     public void onSurfaceCreated(int width, int height) {
         /**用户所选视频以视口宽高为基准算矩阵*/
+        //初始化矩阵
+        Matrix.setIdentityM(mProjectMatrix, 0);
+        Matrix.setIdentityM(mModelMatrix, 0);
         //设置透视投影
         float screenRatio=(float) width / height;
         float videoRatio=(float) videoWidth / videoHeight;
+        Log.e(TAG, "onSurfaceCreated: screenWidth = " + width);
+        Log.e(TAG, "onSurfaceCreated: screenHeight = " + height);
         Log.e(TAG, "onSurfaceCreated: videoWidth = " + videoWidth);
         Log.e(TAG, "onSurfaceCreated: videoHeight = " + videoHeight);
         if (videoRatio>screenRatio){
@@ -113,6 +125,27 @@ public class BackVideoFilter extends AbsFilter {
     }
 
     private void start_decode(final String filePath, SurfaceTexture surfaceTexture) {
+        MediaMetadataRetriever mmr = new MediaMetadataRetriever();
+        mmr.setDataSource(filePath);
+        videoDuration = Long.parseLong(mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
+        Log.i(TAG, "start_decode: videoDuration = " + videoDuration);
+
+        MediaExtractor mExtractor = new MediaExtractor();//创建对象
+        try {
+            mExtractor.setDataSource(filePath);//设置视频文件路径
+        } catch (IOException e) {
+            throw new RuntimeException("path is wrong");
+        }
+        int count = mExtractor.getTrackCount();//得到轨道数
+        for (int i = 0; i < count; i++) {
+            MediaFormat mediaFormat = mExtractor.getTrackFormat(i);    //获得第id个Track对应的MediaForamt
+            String mime = mediaFormat.getString(MediaFormat.KEY_MIME);    //再获取该Track对应的KEY_MIME字段
+            if(mime.startsWith("video/")){
+                videoFPS = mediaFormat.getInteger(MediaFormat.KEY_FRAME_RATE);
+                Log.i(TAG, "start_decode: videoFPS = " + videoFPS);
+            }
+        }
+
         mediaPlayer = new MediaPlayer();
         mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
         mediaPlayer.setSurface(new Surface(surfaceTexture));
@@ -120,19 +153,19 @@ public class BackVideoFilter extends AbsFilter {
         mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mp) {
-//                mp.seekTo(0);
-//                mp.start();
                 restart();
             }
         });
-        Log.d(TAG, "start_decode: end");
+        Log.i(TAG, "start_decode: end");
 //         异步准备的一个监听函数，准备好了就调用里面的方法
         mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
             @Override
             public void onPrepared(MediaPlayer mp) {
                 videoWidth = mp.getVideoWidth();
                 videoHeight = mp.getVideoHeight();
-                onSurfaceCreated(screenWidth, screenHeight);
+                Log.i(TAG, "onPrepared: videoWidth = " + videoWidth);
+                Log.i(TAG, "onPrepared: videoHeight = " + videoHeight);
+                onSurfaceCreated(540, 960);// TODO 这个值应该是模板视频的宽度，不应该是固定值，应该在config.json里面读取
                 mp.start();
                 mp.setVolume(0,0);//默认不播放声音
             }
@@ -147,6 +180,15 @@ public class BackVideoFilter extends AbsFilter {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        if (mmr != null) {
+            mmr.release();
+        }
+
+        if (mExtractor != null) {
+            mExtractor.release();
+            Log.i(TAG, "start_decode:  mExtractor.release();");
+        }
     }
 
     public void setScreenWH(int width, int height) {
@@ -157,5 +199,17 @@ public class BackVideoFilter extends AbsFilter {
     public void restart() {
         mediaPlayer.seekTo(0);
         mediaPlayer.start();
+    }
+
+    public int getVideoFPS() {
+        return videoFPS;
+    }
+
+    public long getVideoDuration() {
+        return videoDuration;
+    }
+
+    public int getVideoCurtime () {
+        return mediaPlayer.getCurrentPosition();
     }
 }

@@ -2,6 +2,7 @@ package com.xmb.muldecodedemo;
 
 import android.app.Activity;
 
+import android.content.Context;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.opengl.EGL14;
@@ -18,17 +19,27 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import com.xmb.muldecodedemo.bean.ConfigBean;
 import com.xmb.muldecodedemo.egl.EglCore;
 import com.xmb.muldecodedemo.egl.WindowSurface;
 import com.xmb.muldecodedemo.filter.AbsFilter;
 import com.xmb.muldecodedemo.filter.BackVideoFilter;
+import com.xmb.muldecodedemo.filter.ImageFilter;
 import com.xmb.muldecodedemo.filter.PassThroughFilter;
 import com.xmb.muldecodedemo.filter.YUVFilter;
 import com.xmb.muldecodedemo.utils.FBO;
 import com.xmb.muldecodedemo.utils.FileUtils;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Type;
+
 
 /**
  * Created by Administrator on 2018/7/11 0011.
@@ -38,12 +49,12 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
         View.OnClickListener{
     private final static String TAG = "TemplateComposeActivity";
 
-//    String DirAsset0 = FileUtils.getSDPath() + "/" + "asset0";
-//    String DirAsset1 = FileUtils.getSDPath() + "/" + "asset1";
     String asset0MP4 = FileUtils.getSDPath() + "/" + "asset0.mp4";
     String asset1MP4 = FileUtils.getSDPath() + "/" + "asset1.mp4";
-    String assetMP4 = FileUtils.getSDPath() + "/" + "asset.mp4";
+    String assetMP4 = FileUtils.getSDPath() + "/" + "asset1.mp4";
     String musicMP3 =  FileUtils.getSDPath() + "/" + "music.mp3";
+    String pngImg = FileUtils.getSDPath() + "/" + "ui2.png";
+    String config = FileUtils.getSDPath() + "/" + "config.json";
 
     SurfaceView sv;
     private EglCore mEglCore;
@@ -53,6 +64,8 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
     public YUVFilter middleFilter;
     public YUVFilter frontFilter;
     public SurfaceTexture mVideoSurfaceTexture;
+
+    public ImageFilter pngFilter;
 
     public PassThroughFilter passThroughFilter;
 
@@ -71,7 +84,6 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
     private boolean isViewportInit = false;
 
     private File outputFile;
-    private File audioFile;
     private volatile boolean mRequestRecord;
     private RecordEncoder mRecordEncoder;
     private boolean recording;
@@ -82,6 +94,11 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
     String asset1Video;//模板视频1（素材），用作frontFilter中景纹理
     String userSelVideo;//用户所选视频
     String musicAudio;//模板自带音频
+
+    private Gson gson;
+
+    ConfigBean configBean;
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -101,6 +118,49 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
         asset1Video = asset1MP4;
         userSelVideo = assetMP4;
         musicAudio = musicMP3;
+
+        initData();
+        Log.w(TAG, "onCreate: initData");
+    }
+
+    private void initData() {
+        gson = new Gson();
+        configBean = getConfigBean();
+        Log.w(TAG, "initData: ");
+        Log.d(TAG, "initData: size[0] = " + configBean.size[0] );
+    }
+
+    private ConfigBean getConfigBean() {
+        Type configType = new TypeToken<ConfigBean>() {
+        }.getType();
+        return gson.fromJson(getJson(config), configType);
+    }
+
+    /**
+     * 将json文件中的文件转换成字符串
+     *
+     * @param path
+     * @return
+     */
+    private String getJson(String path) {
+        File file = new File(path);
+
+        InputStream stream = null;
+        try {
+            stream = new FileInputStream(file);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(stream, "utf-8"));
+            StringBuilder sb = new StringBuilder();
+            String line = null;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line + "\n");
+            }
+            stream.close();
+            reader.close();
+            return sb.toString();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "";
     }
 
     @Override
@@ -147,6 +207,8 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
 //            e.printStackTrace();
 //            Log.e(TAG, "surfaceCreated: wait YUVFilter is error");
 //        }
+        pngFilter = new ImageFilter(this);
+        pngFilter.init(pngImg);
     }
 
     @Override
@@ -161,6 +223,19 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
     boolean frame_extract = false;//抽帧专用
     int prviewUpdataCount = 0;//预览丢帧计数
     boolean updata;//是否更新纹理标志位
+    int lastTime = 0;//上一帧时间
+
+    //抽帧，为了解决模板帧率为15帧，而用户所选视频帧数为其他帧的问题（用ffmpeg改变帧率）
+    private boolean isNeedExtract() {
+        switch (backFilter.getVideoFPS()) {
+            case 15:
+                break;
+            case 30:
+                break;
+        }
+
+        return true;
+    }
 
     private void drawFrame() {
         if (mEglCore == null) {
@@ -177,13 +252,8 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
             isViewportInit = true;
         }
 
-        //抽帧，为了解决模板帧率为15帧，而用户摄像头摄像的帧数为30帧的问题
-        //可以不用mediaplayer 改用 mediacodec进行解码，在解码的过程中进行抽帧
-        if (!frame_extract) {
-            frame_extract = true;
+        if ( isNeedExtract() ){
             return;
-        } else {
-            frame_extract = false;
         }
 
         if (frontFilter.isEnd()||middleFilter.isEnd()) {
@@ -193,13 +263,6 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
             if (mRequestRecord) {
                 recordDraw();
             } else {
-                //预览时，丢弃几帧防止出现无法采集到数据（YUV数据为空时，opengl纹理为绿色）
-                if (prviewUpdataCount < 3) {
-                    prviewUpdataCount++;
-                    updata = true;
-                } else {
-                    updata = false;
-                }
                 previewDraw(updata);
             }
             mDisplaySurface.swapBuffers();
@@ -209,16 +272,14 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
         if(mRequestRecord) {
             if(!recording) {
                 mRecordEncoder.startRecording(new RecordEncoder.EncoderConfig(
-                        outputFile, musicAudio,
+                        outputFile, musicMP3,
                         frontFilter.getVideoWidth(), frontFilter.getVideoHeight(),
                         2500000,
                         EGL14.eglGetCurrentContext(), TemplateComposeActivity.this));
                 mRecordEncoder.setTextureId(fbo.getTextureId());
                 recording = mRecordEncoder.isRecording();
             }
-            //设置进度条
-//            Log.i(TAG, "drawFrame:  frontFilter.getCurTime(); = " +  frontFilter.getCurTime());
-//            Log.i(TAG, "drawFrame:  frontFilter.getDuration(); = " +  frontFilter.getDuration());
+
             mRecordEncoder.frameAvailable(mVideoSurfaceTexture);
         } else {
             if(recording) {
@@ -226,30 +287,27 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
                 middleFilter.stop();
                 frontFilter.stop();
                 recording = false;
-                this.finish();
+//                encodeFinish();
+                finish();
             }
         }
     }
 
     private void previewDraw(boolean updata) {
         GLES20.glViewport(viewportRect.left, viewportRect.top, viewportRect.width(), viewportRect.height());
-        backFilter.onDrawFrame(backFilter.getTextureId());
-        if(touchFlag) {
-            GLES20.glEnable(GLES20.GL_BLEND);
-            GLES20.glBlendFunc(GLES20.GL_ONE_MINUS_DST_COLOR, GLES20.GL_ONE);
-            frontFilter.onDrawFrame(updata);
-            GLES20.glDisable(GLES20.GL_BLEND);
-        } else {
-            GLES20.glEnable(GLES20.GL_BLEND);
-            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE);
-            middleFilter.onDrawFrame(updata);
-            GLES20.glDisable(GLES20.GL_BLEND);
 
-            GLES20.glEnable(GLES20.GL_BLEND);
-            GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_SRC_COLOR);
-            frontFilter.onDrawFrame(updata);
-            GLES20.glDisable(GLES20.GL_BLEND);
-        }
+        backFilter.onDrawFrame(backFilter.getTextureId());
+//        if(touchFlag) {
+//            GLES20.glEnable(GLES20.GL_BLEND);
+//            GLES20.glBlendFunc(GLES20.GL_ONE_MINUS_DST_COLOR, GLES20.GL_DST_ALPHA);
+//            pngFilter.onDrawFrame(pngFilter.getTextureID());
+//            GLES20.glDisable(GLES20.GL_BLEND);
+//        } else {
+//            GLES20.glEnable(GLES20.GL_BLEND);
+//            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);//GL_DST_ALPHA  GL_ONE_MINUS_SRC_ALPHA
+//            pngFilter.onDrawFrame(pngFilter.getTextureID());
+//            GLES20.glDisable(GLES20.GL_BLEND);
+//        }
     }
 
     private void recordDraw() {
