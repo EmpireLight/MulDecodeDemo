@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import static android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface;
 
@@ -128,7 +129,7 @@ public class RecordEncoderCore {
         mVideoEncoder.start();//启动MediaCodec ，等待传入数据
         videoEncodeBI = new MediaCodec.BufferInfo();
 
-        // 1. 获取编码输出队列
+        // 1. 获取解码码输出队列
         videoDecodeOB = mVideoEncoder.getOutputBuffers();
     }
 
@@ -200,124 +201,150 @@ public class RecordEncoderCore {
     }
 
     /**
-     * 解码音频文件，得到pcm数据块
-     * @return 是否解码完所有数据
+     * 音频解码线程
      */
-    private void srcAudioFormatToPCM() {
-//        Log.w(TAG, "srcAudioFormatToPCM: decode to pcm" );
-//        for (int i = 0; i < audioDecodeIB.length-1; i++) {
-            // 2. 从编码的输出队列中检索出各种状态，对应处理
-            int inputIndex = mAudioDecoder.dequeueInputBuffer(-1);//获取可用的inputBuffer -1代表一直等待，0表示不等待 建议-1,避免丢帧
-            if (inputIndex < 0) {
-                Log.e(TAG, "srcAudioFormatToPCM: inputIndex = " + inputIndex );
-                return;
-            }
-            ByteBuffer inputBuffer = audioDecodeIB[inputIndex];//拿到inputBuffer
-            inputBuffer.clear();//清空之前传入inputBuffer内的数据
-            int sampleSize = mediaExtractor.readSampleData(inputBuffer, 0);//MediaExtractor读取数据到inputBuffer中
-            if (sampleSize <0) {//小于0 代表所有数据已读取完成
-                Log.e(TAG, "srcAudioFormatToPCM: audio stream is end");
-            } else {
-                mAudioDecoder.queueInputBuffer(inputIndex, 0, sampleSize, 0, 0);//通知MediaDecode解码刚刚传入的数据
-                mediaExtractor.advance();//MediaExtractor移动到下一取样处
-                audioDecodeSize += sampleSize;
-            }
-            Log.e(TAG, "srcAudioFormatToPCM: audioDecodeSize = " + audioDecodeSize );
-//        }
-//        MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED
-//        MediaCodec.INFO_OUTPUT_FORMAT_CHANGED
-//        MediaCodec.INFO_TRY_AGAIN_LATER
-//        MediaCodec.BUFFER_FLAG_CODEC_CONFIG
+    private class AudioDecodeRunable implements Runnable {
+        @Override
+        public void run() {
+            boolean isEOS = false;
+            while (true) {
+                if (!isEOS) {
+                    int inIndex = mAudioDecoder.dequeueInputBuffer(TIMEOUT_USEC);///获取可用的inputBuffer -1代表一直等待，0表示不等待 建议-1,避免丢帧
+                    if (inIndex >= 0) {
+                        ByteBuffer inputBuffer = audioDecodeIB[inIndex];////拿到inputBuffer
+                        inputBuffer.clear();//清空之前传入inputBuffer内的数据
+                        int sampleSize = mediaExtractor.readSampleData(inputBuffer, 0);//MediaExtractor读取数据到inputBuffer中
+                        if (sampleSize < 0) {//小于0 代表所有数据已读取完成
+                            Log.e(TAG, "srcAudioFormatToPCM: audio stream is end");
+                            mAudioDecoder.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                            isEOS = true;
+                        } else {
+                            mAudioDecoder.queueInputBuffer(inIndex, 0, sampleSize, 0, 0);//通知MediaDecode解码刚刚传入的数据
+                            mediaExtractor.advance();//MediaExtractor移动到下一取样处
+                            audioDecodeSize += sampleSize;
+                            Log.i(TAG, "run: audioDecodeSize = " + audioDecodeSize);
+                        }
+                    }
+                }
 
-        //获取解码得到的byte[]数据 参数BufferInfo上面已介绍 10000同样为等待时间 同上-1代表一直等待，0代表不等待。此处单位为微秒
-        //此处建议不要填-1 有些时候并没有数据输出，那么他就会一直卡在这 等待
-        ByteBuffer outputBuffer;
-        byte[] chunkPCM;
-        int outputIndex = mAudioDecoder.dequeueOutputBuffer(audioDecodeBI, TIMEOUT_USEC);
-        Log.e(TAG, "mAudioDecoder: outputIndex " + outputIndex);
-        while (outputIndex >= 0) {//每次解码完成的数据不一定能一次吐出 所以用while循环，保证解码器吐出所有数据
-            outputBuffer = audioDecodeOB[outputIndex];//拿到用于存放PCM数据的Buffer
-            chunkPCM = new byte[audioDecodeBI.size];//BufferInfo内定义了此数据块的大小
-            Log.e(TAG, "srcAudioFormatToPCM: audioDecodeBI.size = " + audioDecodeBI.size);
-            outputBuffer.get(chunkPCM);//将Buffer内的数据取出到字节数组中
-            outputBuffer.clear();//数据取出后一定记得清空此Buffer MediaCodec是循环使用这些Buffer的，不清空下次会得到同样的数据
+                int outIndex = mAudioDecoder.dequeueOutputBuffer(audioDecodeBI, TIMEOUT_USEC);
+                switch (outIndex) {
+                    case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
+                        videoDecodeOB = mAudioDecoder.getOutputBuffers();
+                        Log.i(TAG, "run: mAudioDecoder INFO_OUTPUT_BUFFERS_CHANGED");
+                        break;
+                    case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED://可以在这里开始编码线程
+                        Log.i(TAG, "run: mAudioDecoder INFO_OUTPUT_FORMAT_CHANGED");
+                        break;
+                    case MediaCodec.INFO_TRY_AGAIN_LATER:
+                        Log.i(TAG, "run: mAudioDecoder INFO_TRY_AGAIN_LATER");
+                        break;
+                    default:
+                        if (outIndex >= 0) {
+                            ByteBuffer outputBuffer;
+                            byte[] chunkPCM;
+                            outputBuffer = audioDecodeOB[outIndex];//拿到用于存放PCM数据的Buffer
+                            chunkPCM = new byte[audioDecodeBI.size];//BufferInfo内定义了此数据块的大小
+                            outputBuffer.get(chunkPCM, 0, audioDecodeBI.size);//将Buffer内的数据取出到字节数组中
+                            outputBuffer.clear();//数据取出后一定记得清空此Buffer MediaCodec是循环使用这些Buffer的，不清空下次会得到同样的数据
 
-            try {
-                chunkPCMDataContainer.put(chunkPCM);//自己定义的方法，供编码器所在的线程获取数据,下面会贴出代码
-                Log.w(TAG, "srcAudioFormatToPCM.put sum = " + chunkPCMDataContainer.size() );
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+                            try {
+                                chunkPCMDataContainer.put(chunkPCM);//自己定义的方法，供编码器所在的线程获取数据,下面会贴出代码
+                                Log.w(TAG, "srcAudioFormatToPCM.put sum = " + chunkPCMDataContainer.size());
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                        break;
+                }
+
+                // All decoded frames have been rendered, we can stop playing now
+                if ((audioDecodeBI.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    Log.i(TAG, "run: audioDecodeBI BUFFER_FLAG_END_OF_STREAM");
+                    break;
+                }
             }
-
-            mAudioDecoder.releaseOutputBuffer(outputIndex, false);//此操作一定要做，不然MediaCodec用完所有的Buffer后 将不能向外输出数据
-            outputIndex = mAudioDecoder.dequeueOutputBuffer(audioDecodeBI, TIMEOUT_USEC);//再次获取数据，如果没有数据输出则outputIndex=-1 循环结束
         }
     }
 
     /**
-     * 编码PCM数据，并放入muxer
+     * 音频编码线程
      */
-    private void dstAudioFormatFromPCM() {
-        int inputIndex;
-        ByteBuffer inputBuffer;
-        int outputIndex;
-        ByteBuffer outputBuffer;
-        byte[] chunkAudio;
-        int outBitSize;
-        int outPacketSize;
-        byte[] chunkPCM = null;
-        Log.w(TAG, "chunkPCMDataContainer.take: start size" + chunkPCMDataContainer.size() );
-        try {
-            chunkPCM = chunkPCMDataContainer.take();
-            Log.w(TAG, "chunkPCMDataContainer.take: end size " + chunkPCMDataContainer.size() );
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+    private class AudiEnecodeRunable implements Runnable{
+        @Override
+        public void run() {
+            boolean isFinish = false;
+            while (true) {
+                byte[] chunkPCM = null;
+                if (!isFinish) {
+                    try {
+                        chunkPCM = chunkPCMDataContainer.poll(1000, TimeUnit.MILLISECONDS);
+                        Log.w(TAG, "chunkPCMDataContainer.poll: rest size " + chunkPCMDataContainer.size() );
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
 
-        if (chunkPCM == null) {
-            Log.w(TAG, "dstAudioFormatFromPCM: chunkPCM is null" );
+                    if (chunkPCM == null) {
+                        Log.e(TAG, "run: chunkPCM == null " );
+                        if (mEndOfStream) {
+                            isFinish = true;
+                            int inIndex = mAudioEncoder.dequeueInputBuffer(TIMEOUT_USEC);
+                            mAudioEncoder.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                        } else {
+                            continue;
+                        }
+                    }
 
-        }
+                    int inputIndex = mAudioEncoder.dequeueInputBuffer(TIMEOUT_USEC);
+                    if (inputIndex >= 0) {
+                        ByteBuffer inputBuffer;
+                        inputBuffer = audioEncodeIB[inputIndex];//同解码器
+                        inputBuffer.clear();//同解码器
+                        inputBuffer.limit(chunkPCM.length);
+                        inputBuffer.put(chunkPCM);//PCM数据填充给inputBuffer
+                        mAudioEncoder.queueInputBuffer(inputIndex, 0, chunkPCM.length, 0, 0);//通知编码器 编码
+                        audioEncodeSize += chunkPCM.length;
+                        Log.e(TAG, "audioEncodeSize: " + audioEncodeSize );
+                    }
+                }
 
-        inputIndex = mAudioEncoder.dequeueInputBuffer(TIMEOUT_USEC);//同解码器
-        if (inputIndex >= 0) {
-            inputBuffer = audioEncodeIB[inputIndex];//同解码器
-            inputBuffer.clear();//同解码器
-            inputBuffer.limit(chunkPCM.length);
-            inputBuffer.put(chunkPCM);//PCM数据填充给inputBuffer
-            mAudioEncoder.queueInputBuffer(inputIndex, 0, chunkPCM.length, 0, 0);//通知编码器 编码
-            audioEncodeSize += chunkPCM.length;
-            Log.e(TAG, "audioEncodeSize: " + audioEncodeSize );
-        }
+                ByteBuffer outputBuffer;
+                int outIndex = mAudioEncoder.dequeueOutputBuffer(audioEncodeBI, TIMEOUT_USEC);
+                switch (outIndex) {
+                    case MediaCodec.INFO_TRY_AGAIN_LATER:// 暂时还没输出的数据能捕获
+                        Log.i(TAG, "no output available, spinning to await EOS");
+                        break;
+                    case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:// 这个状态说明输出队列对象改变了，请重新获取一遍。
+                        Log.i(TAG, "INFO_OUTPUT_BUFFERS_CHANGED");
+                        audioEncodeOB = mAudioEncoder.getOutputBuffers();
+                        break;
+                    case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:// 现在我们已经得到想要的编码数据了，让我们开始合成进mp4容器文件里面吧
+                        MediaFormat audioFormat = mAudioEncoder.getOutputFormat();
+                        mAudioTrackIndex = mMuxer.addTrack(audioFormat);
+                        // 获取track轨道号，等下写入编码数据的时候需要用到
+                        isAudioAdd = true;
+                        Log.w(TAG, "FORMAT_CHANGED: mAudioTrackIndex = " + mAudioTrackIndex + " isAudioAdd = " + isAudioAdd );
+                        startMuxer();
+                        Log.w(TAG, "FORMAT_CHANGED: AudiostartMuxer end");
+                        break;
+                    default:
+                        outputBuffer = audioEncodeOB[outIndex];//拿到输出Buffer
+                        //TODO 写入muxer muxer是不需要adts头的
+                        Log.e(TAG, "audio write to muxer");
+                        // write encoded data to muxer(need to adjust presentationTimeUs.
+                        audioEncodeBI.presentationTimeUs = getPTSUs();
+                        mMuxer.writeSampleData(mAudioTrackIndex, outputBuffer, audioEncodeBI);
+                        prevOutputPTSUs = audioEncodeBI.presentationTimeUs;
 
-        Log.e(TAG, "dstAudioFormatFromPCM: loop" );
-        outputIndex = mAudioEncoder.dequeueOutputBuffer(audioEncodeBI, TIMEOUT_USEC);//同解码器
-        if (outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {// 暂时还没输出的数据能捕获
-                Log.e(TAG, "no output available, spinning to await EOS");
-        } else if (outputIndex == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {// 这个状态说明输出队列对象改变了，请重新获取一遍。
-            Log.e(TAG, "INFO_OUTPUT_BUFFERS_CHANGED");
-            audioEncodeOB = mAudioEncoder.getOutputBuffers();
-        } else if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {// 现在我们已经得到想要的编码数据了，让我们开始合成进mp4容器文件里面吧。
-            MediaFormat audioFormat = mAudioEncoder.getOutputFormat();
-            mAudioTrackIndex = mMuxer.addTrack(audioFormat);
-            // 获取track轨道号，等下写入编码数据的时候需要用到
-            isAudioAdd = true;
-            Log.w(TAG, "FORMAT_CHANGED: mAudioTrackIndex = " + mAudioTrackIndex + " isAudioAdd = " + isAudioAdd );
-            startMuxer();
-            Log.w(TAG, "FORMAT_CHANGED: AudiostartMuxer end");
-        } else if (outputIndex < 0) {
-            Log.e(TAG, "unexpected result from encoder.dequeueOutputBuffer: " + outputIndex);
-            // Continue while(true)
-        } else {
-            outputBuffer = audioEncodeOB[outputIndex];//拿到输出Buffer
-            //TODO 写入muxer muxer是不需要adts头的
-            Log.e(TAG, "audio write to muxer");
-            // write encoded data to muxer(need to adjust presentationTimeUs.
-            audioEncodeBI.presentationTimeUs = getPTSUs();
-            mMuxer.writeSampleData(mAudioTrackIndex, outputBuffer, audioEncodeBI);
-            prevOutputPTSUs = audioEncodeBI.presentationTimeUs;
+                        mAudioEncoder.releaseOutputBuffer(outIndex, false);
+                        break;
+                }
 
-            mAudioEncoder.releaseOutputBuffer(outputIndex, false);
+                if ((audioEncodeBI.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    Log.i(TAG, "run: encode OutputBuffer BUFFER_FLAG_END_OF_STREAM");
+                    break;
+                }
+            }
         }
     }
 
@@ -361,34 +388,6 @@ public class RecordEncoderCore {
                 Log.e(TAG, "startMuxer: notifyAll" );
                 lock.notifyAll();
             }
-        }
-    }
-
-    /**
-     * 音频解码线程
-     */
-    private class AudioDecodeRunable implements Runnable{
-        @Override
-        public void run() {
-            while (!mEndOfStream) {
-                srcAudioFormatToPCM();
-//                Log.w(TAG, "run: Audio To PCM" );
-            }
-        }
-    }
-
-    /**
-     * 音频编码线程
-     */
-    private class AudiEnecodeRunable implements Runnable{
-        @Override
-        public void run() {
-            long t=System.currentTimeMillis();
-            while (!mEndOfStream || !chunkPCMDataContainer.isEmpty()) {
-                dstAudioFormatFromPCM();
-            }
-
-            Log.i(TAG, "AudiEnecodeRunable: done");
         }
     }
 

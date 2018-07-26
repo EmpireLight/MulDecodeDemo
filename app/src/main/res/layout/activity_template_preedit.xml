@@ -1,70 +1,90 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="fill_parent"
-    android:layout_height="fill_parent">
+    xmlns:custom="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/c3C3748"
+    android:orientation="vertical">
 
-    <LinearLayout
+    <View
+        android:id="@+id/template_editor_topView"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-        <SurfaceView
-            android:id="@+id/surfaceView1"
+        android:layout_height="25dp" />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/title">
+
+        <ImageView
+            android:id="@+id/template_preedit_back"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_centerVertical="true"
+            android:contentDescription="@null"
+            android:paddingLeft="@dimen/padding"
+            android:paddingRight="@dimen/padding"
+            android:src="@drawable/jc_back_normal" />
+
+        <TextView
+            android:id="@+id/template_preedit_next"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_alignParentRight="true"
+            android:layout_centerVertical="true"
+            android:contentDescription="@null"
+            android:gravity="center"
+            android:paddingLeft="@dimen/padding"
+            android:paddingRight="@dimen/padding"
+            android:text="@string/next_tel"
+            android:textColor="@color/while_sel"
+            android:textSize="16dp" />
+
+    </RelativeLayout>
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="400dp">
+
+        <VideoView
+            android:id="@+id/vv_videoview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_gravity="center_vertical">
-        </SurfaceView>
-    </LinearLayout>
+            android:layout_centerHorizontal="true"
+            android:layout_centerVertical="true"/>
 
-    <LinearLayout
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:orientation="vertical">
-
-        <LinearLayout
+        <ImageView
+            android:id="@+id/icon_video_play"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="4dp"
-            android:orientation="horizontal">
+            android:layout_centerHorizontal="true"
+            android:layout_centerVertical="true"
+            android:background="@drawable/play_video"
+            android:contentDescription="@null"
+            android:paddingBottom="12dp" />
 
-            <Button
-                android:id="@+id/btnPlay"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="play"
-                android:textSize="@dimen/title_size"/>
+    </RelativeLayout>
 
-            <Button
-                android:id="@+id/btnPause"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="pause"
-                android:textSize="@dimen/title_size"/>
-            <Button
-                android:id="@+id/btnStop"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="stop"
-                android:textSize="@dimen/title_size"/>
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="fill_parent"
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <com.xmb.muldecodedemo.wiget.DoubleSlideSeekBar
+            android:id="@+id/doubleslide_withoutrule"
+            android:layout_marginTop="40dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="20dp"
-            android:orientation="horizontal">
+            android:layout_gravity="center_horizontal"
+            custom:lineHeight="8dp"
+            custom:textSize="16sp"
+            custom:textColor="@color/while_sel"
+            custom:inColor="#0a40f1"
+            custom:outColor="#ace208"
+            custom:imageLow="@drawable/ball"
+            custom:imageBig="@drawable/ball"
+            custom:imagewidth="30dp"
+            custom:imageheight="30dp"
+            custom:hasRule="false"
+            custom:unit="s"
+            />
+    </RelativeLayout>
 
-            <SeekBar
-                android:id="@+id/skbProgress"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:layout_weight="1.0"
-                android:max="100"
-                android:paddingLeft="10dp"
-                android:paddingRight="10dp">
-            </SeekBar>
-        </LinearLayout>
-    </LinearLayout>
 </LinearLayout>

@@ -47,8 +47,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Intent intent = new Intent();
         switch (v.getId()) {
             case R.id.main_back:
-                Log.d(TAG, "onClick: back");
-                intent.setClass(MainActivity.this, TemplateVideoPreedit.class);
+                Log.e(TAG, "onClick: back");
+                intent.setClass(MainActivity.this, TemplateVideoPreeditActivity.class);
                 startActivity(intent);
                 break;
             case R.id.main_next:

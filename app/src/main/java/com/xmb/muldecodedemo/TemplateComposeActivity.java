@@ -201,12 +201,7 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
 
         recording = mRecordEncoder.isRecording();
         mRequestRecord = false;
-//        try {
-//            Thread.sleep(500);
-//        }catch (InterruptedException e) {
-//            e.printStackTrace();
-//            Log.e(TAG, "surfaceCreated: wait YUVFilter is error");
-//        }
+
         pngFilter = new ImageFilter(this);
         pngFilter.init(pngImg);
     }
@@ -220,22 +215,6 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
         GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     }
 
-    boolean frame_extract = false;//抽帧专用
-    int prviewUpdataCount = 0;//预览丢帧计数
-    boolean updata;//是否更新纹理标志位
-    int lastTime = 0;//上一帧时间
-
-    //抽帧，为了解决模板帧率为15帧，而用户所选视频帧数为其他帧的问题（用ffmpeg改变帧率）
-    private boolean isNeedExtract() {
-        switch (backFilter.getVideoFPS()) {
-            case 15:
-                break;
-            case 30:
-                break;
-        }
-
-        return true;
-    }
 
     private void drawFrame() {
         if (mEglCore == null) {
@@ -252,9 +231,6 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
             isViewportInit = true;
         }
 
-        if ( isNeedExtract() ){
-            return;
-        }
 
         if (frontFilter.isEnd()||middleFilter.isEnd()) {
             Log.e(TAG, "frontFilter isEnd");
@@ -263,7 +239,7 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
             if (mRequestRecord) {
                 recordDraw();
             } else {
-                previewDraw(updata);
+                previewDraw();
             }
             mDisplaySurface.swapBuffers();
         }
@@ -293,21 +269,21 @@ public class TemplateComposeActivity extends Activity implements SurfaceHolder.C
         }
     }
 
-    private void previewDraw(boolean updata) {
+    private void previewDraw() {
         GLES20.glViewport(viewportRect.left, viewportRect.top, viewportRect.width(), viewportRect.height());
 
         backFilter.onDrawFrame(backFilter.getTextureId());
-//        if(touchFlag) {
-//            GLES20.glEnable(GLES20.GL_BLEND);
-//            GLES20.glBlendFunc(GLES20.GL_ONE_MINUS_DST_COLOR, GLES20.GL_DST_ALPHA);
-//            pngFilter.onDrawFrame(pngFilter.getTextureID());
-//            GLES20.glDisable(GLES20.GL_BLEND);
-//        } else {
-//            GLES20.glEnable(GLES20.GL_BLEND);
-//            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);//GL_DST_ALPHA  GL_ONE_MINUS_SRC_ALPHA
-//            pngFilter.onDrawFrame(pngFilter.getTextureID());
-//            GLES20.glDisable(GLES20.GL_BLEND);
-//        }
+        if(touchFlag) {
+            GLES20.glEnable(GLES20.GL_BLEND);
+            GLES20.glBlendFunc(GLES20.GL_ONE_MINUS_DST_COLOR, GLES20.GL_DST_ALPHA);
+            pngFilter.onDrawFrame(pngFilter.getTextureID());
+            GLES20.glDisable(GLES20.GL_BLEND);
+        } else {
+            GLES20.glEnable(GLES20.GL_BLEND);
+            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);//GL_DST_ALPHA  GL_ONE_MINUS_SRC_ALPHA
+            pngFilter.onDrawFrame(pngFilter.getTextureID());
+            GLES20.glDisable(GLES20.GL_BLEND);
+        }
     }
 
     private void recordDraw() {

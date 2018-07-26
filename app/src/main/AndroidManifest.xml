@@ -23,7 +23,7 @@
         </activity>
 
         <activity android:name=".TemplateComposeActivity"/>
-        <activity android:name=".TemplateVideoPreedit"/>
+        <activity android:name=".TemplateVideoPreeditActivity"/>
 
     </application>
 
